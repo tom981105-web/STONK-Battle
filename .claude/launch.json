@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "market-battle",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "F:\\claude\\주식\\market-battle",
+      "port": 5173
+    }
+  ]
+}

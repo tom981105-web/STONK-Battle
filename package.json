@@ -1,0 +1,20 @@
+{
+  "name": "market-battle",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build --base=./",
+    "preview": "vite preview",
+    "deploy": "npm run build && gh-pages -d dist --repo https://github.com/tom981105-web/market-online.git"
+  },
+  "dependencies": {
+    "chart.js": "^4.4.3",
+    "firebase": "^10.12.2"
+  },
+  "devDependencies": {
+    "gh-pages": "^6.1.1",
+    "vite": "^5.3.1"
+  }
+}
