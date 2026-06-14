@@ -6,10 +6,10 @@
 // ★ 배포 주소를 바꾸려면 아래 SITE_URLS 한 곳만 수정하면 됩니다. ★
 
 const SITE_URLS = {
-  battle: "https://tom981105-web.github.io/market-online/",
-  board:  "https://tom981105-web.github.io/Market-Board/",
-  wiki:   "https://tom981105-web.github.io/Market-Wiki/",
-  admin:  "https://tom981105-web.github.io/Market-Admin/",
+  battle: "https://tom981105-web.github.io/STONK-Battle/",
+  board:  "https://tom981105-web.github.io/STONK-Board/",
+  wiki:   "https://tom981105-web.github.io/STONK-Wiki/",
+  admin:  "https://tom981105-web.github.io/STONK-Admin/market-admin.html",
 };
 
 const LOCAL_FALLBACK = {

@@ -44,6 +44,8 @@ const state = {
   // Phase 3: 중간 참여(late-join) 승인 대기 구독
   joinReqRef: null,
   joinReqId: null,
+  // 관리자 페이지 링크 노출 여부 (/admins/{uid}=true)
+  isDbAdmin: false,
 };
 
 // 방 진행 상태 분류 (status 필드 호환)
@@ -90,13 +92,35 @@ function boot() {
       state.uid = user.uid;
       state.email = user.email || null;
       localStorage.setItem("mb_playerId", user.uid);
+      void refreshAdminLink();
       afterLogin();
     } else {
       state.uid = null;
       state.email = null;
+      state.isDbAdmin = false;
+      const na = document.getElementById("navAdmin");
+      if (na) na.hidden = true; // 로그아웃/미로그인 시 관리자 링크 숨김
       ui.showScreen("screen-login");
     }
   });
+}
+
+// 관리자 페이지 링크 노출 제어: 하드코딩 관리자 또는 /admins/{uid}=true 일 때만 표시.
+// auth 미준비/연결 실패/일반 사용자는 숨김(기본 hidden).
+async function refreshAdminLink() {
+  const navAdmin = document.getElementById("navAdmin");
+  if (!navAdmin) return;
+  let isAdm = isAdmin(); // 하드코딩 관리자(레거시 호환)
+  if (!isAdm && state.uid && db) {
+    try {
+      const snap = await get(ref(db, "admins/" + state.uid));
+      isAdm = snap.val() === true;
+    } catch (e) {
+      isAdm = false;
+    }
+  }
+  state.isDbAdmin = isAdm;
+  navAdmin.hidden = !isAdm;
 }
 
 // Firebase Auth 오류 코드를 한국어 안내로 변환
