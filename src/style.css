@@ -508,7 +508,28 @@ input:focus {
 
 /* 차트 */
 .chart-wrap { position: relative; height: 260px; }
-#priceChart { width: 100%; height: 100%; display: block; }
+#priceChart { width: 100%; height: 100%; display: block; touch-action: none; }
+
+/* 차트 기간 선택 버튼 */
+.chart-periods { display: flex; gap: 4px; margin: 4px 0 6px; flex-wrap: wrap; }
+.cp-btn {
+  flex: 1 1 0; min-width: 38px; padding: 5px 4px; font-size: 12px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--card); color: var(--muted);
+  border-radius: 7px; transition: all .12s;
+}
+.cp-btn:hover { border-color: var(--text2); }
+.cp-btn.is-active { background: var(--text); color: #fff; border-color: var(--text); font-weight: 700; }
+
+/* 차트 상세 정보 카드 (호버/터치) */
+.chart-tip {
+  position: absolute; z-index: 5; min-width: 132px; pointer-events: none;
+  background: var(--card); border: 1px solid var(--border); border-radius: 9px;
+  box-shadow: 0 6px 22px rgba(20,28,46,.16); padding: 8px 10px; font-size: 12px;
+}
+.chart-tip.hidden { display: none; }
+.chart-tip .tip-when { font-weight: 700; margin-bottom: 5px; color: var(--text2); }
+.chart-tip .tip-row { display: flex; justify-content: space-between; gap: 12px; line-height: 1.7; }
+.chart-tip .tip-row span { color: var(--muted); }
 
 /* ----- 호가창 ----- */
 .orderbook {

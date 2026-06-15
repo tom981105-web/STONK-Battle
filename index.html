@@ -156,7 +156,15 @@
           <div class="ohlc-cell"><span class="ohlc-k">거래대금</span><b id="ohlcValue" class="ohlc-v">-</b></div>
         </div>
         <p id="selStockNews" class="news-line"></p>
-        <div class="chart-wrap"><canvas id="priceChart"></canvas></div>
+        <div class="chart-periods" id="chartPeriods">
+          <button class="cp-btn is-active" data-period="1d" type="button">1일</button>
+          <button class="cp-btn" data-period="1w" type="button">1주</button>
+          <button class="cp-btn" data-period="3m" type="button">3달</button>
+          <button class="cp-btn" data-period="1y" type="button">1년</button>
+          <button class="cp-btn" data-period="5y" type="button">5년</button>
+          <button class="cp-btn" data-period="all" type="button">전체</button>
+        </div>
+        <div class="chart-wrap"><canvas id="priceChart"></canvas><div id="chartTip" class="chart-tip hidden"></div></div>
       </main>
 
       <!-- 우측 상단: 호가창 + 주문 -->

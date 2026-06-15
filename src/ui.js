@@ -12,6 +12,7 @@ import {
   ipoRatio,
   myOrders,
 } from "./game.js";
+import { readSeries } from "./history.js";
 
 // 종목 배지 HTML (유형/역할/신규상장)
 function stockBadge(id, s) {
@@ -376,7 +377,7 @@ function renderStockDetail(room, selectedStockId) {
   newsEl.textContent = s.news ? `📰 ${s.news}` : "";
   newsEl.className = "news-line" + (s.news ? " " + cls : " muted");
 
-  renderCandles($("priceChart"), localCandles[selectedStockId] || [], base);
+  drawChart(room, selectedStockId, base, s);
 }
 
 const lastShownPrice = {}; // 종목별 직전 표시 가격 (플래시용)
@@ -392,7 +393,136 @@ function getCSS(name) {
   return getComputedStyle(document.body).getPropertyValue(name).trim() || "#000";
 }
 
-function renderCandles(canvas, candles, basePrice) {
+// 기간 → tier/개수 매핑 (게임시간≠실시간이므로 보유 history 에 맞춰 매핑)
+const PERIOD_MAP = {
+  "1d": { tiers: ["candles1m"], count: 120 },
+  "1w": { tiers: ["candles5m", "candles1m"], count: 160 },
+  "3m": { tiers: ["candles15m", "candles5m"], count: 180 },
+  "1y": { tiers: ["candles1h", "candles15m"], count: 168 },
+  "5y": { tiers: ["candles1h"], count: 168 },
+  "all": { tiers: ["candles1h", "candles15m", "candles5m", "candles1m"], count: 400 },
+};
+
+let chartPeriod = "1d";
+let chartHover = -1; // 선택(호버/터치)된 캔들 인덱스
+let chartGeom = null; // 마지막 렌더 좌표계 { cw, plotW, priceH, volH, yP, candles, lo, hi }
+let chartCtx = null; // { room, id, base }
+let chartBound = false;
+
+// 선택 종목의 차트 시리즈 구성: Firebase 압축 캔들 + 로컬 누적 캔들 병합(끊김 방지)
+function buildSeries(stock, id, period) {
+  const map = PERIOD_MAP[period] || PERIOD_MAP["1d"];
+  const hist = stock.history || null;
+  let series = [];
+  if (hist) {
+    for (const tk of map.tiers) {
+      const s = readSeries(hist, tk);
+      if (s.length) { series = s.map((c) => ({ ...c })); break; }
+    }
+  }
+  // Firebase 히스토리가 없으면(갓 시작/구버전) 로컬 누적 캔들로 대체 — 차트가 비지 않게
+  const local = localCandles[id] || [];
+  if (!series.length) {
+    series = local.map((c, i) => ({ t: i, o: c.o, h: c.h, l: c.l, c: c.c, v: c.v || 0 }));
+  } else if (local.length) {
+    // 최신 실시간 흐름을 마지막에 이어 붙여 현재가까지 연속되게
+    const lastT = series[series.length - 1].t;
+    const tail = local.slice(-Math.min(local.length, 8));
+    tail.forEach((c, i) => series.push({ t: lastT + i + 1, o: c.o, h: c.h, l: c.l, c: c.c, v: c.v || 0 }));
+  }
+  // 현재가가 마지막 종가와 다르면 현재가 캔들 보정(현재가 강조용)
+  if (series.length && stock.price != null && series[series.length - 1].c !== stock.price) {
+    const last = series[series.length - 1];
+    series.push({ t: last.t + 1, o: last.c, h: Math.max(last.c, stock.price), l: Math.min(last.c, stock.price), c: stock.price, v: 0, _live: true });
+  }
+  if (series.length > map.count) series = series.slice(series.length - map.count);
+  return series;
+}
+
+// 차트 그리기 진입점 (renderStockDetail 에서 호출)
+function drawChart(room, id, base, stock) {
+  chartCtx = { room, id, base };
+  const series = buildSeries(stock, id, chartPeriod);
+  chartHover = -1;
+  hideChartTip();
+  renderCandles($("priceChart"), series, base, -1);
+  setupChartInteraction();
+}
+
+// 기간 버튼/포인터 상호작용 1회 바인딩 (모바일 터치 대응)
+function setupChartInteraction() {
+  if (chartBound) return;
+  chartBound = true;
+  const periods = $("chartPeriods");
+  if (periods) {
+    periods.addEventListener("click", (e) => {
+      const btn = e.target.closest(".cp-btn");
+      if (!btn) return;
+      chartPeriod = btn.dataset.period;
+      periods.querySelectorAll(".cp-btn").forEach((b) => b.classList.toggle("is-active", b === btn));
+      if (chartCtx) {
+        const s = chartCtx.room.stocks?.[chartCtx.id];
+        if (s) drawChart(chartCtx.room, chartCtx.id, chartCtx.base, s);
+      }
+    });
+  }
+  const canvas = $("priceChart");
+  if (canvas) {
+    const onMove = (e) => {
+      if (!chartGeom) return;
+      const rect = canvas.getBoundingClientRect();
+      const px = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+      const idx = Math.max(0, Math.min(chartGeom.candles.length - 1, Math.floor(px / chartGeom.cw)));
+      if (idx !== chartHover) {
+        chartHover = idx;
+        renderCandles(canvas, chartGeom.candles, chartGeom.base, idx);
+        showChartTip(idx);
+      }
+    };
+    const onLeave = () => {
+      chartHover = -1;
+      if (chartGeom) renderCandles(canvas, chartGeom.candles, chartGeom.base, -1);
+      hideChartTip();
+    };
+    canvas.addEventListener("mousemove", onMove);
+    canvas.addEventListener("mouseleave", onLeave);
+    canvas.addEventListener("touchstart", onMove, { passive: true });
+    canvas.addEventListener("touchmove", onMove, { passive: true });
+    canvas.addEventListener("touchend", onLeave);
+  }
+}
+
+// 상세 정보 카드 (날짜/시작/마지막/최고/최저/거래량/등락률)
+function showChartTip(idx) {
+  const tip = $("chartTip");
+  if (!tip || !chartGeom) return;
+  const c = chartGeom.candles[idx];
+  if (!c) return;
+  const rate = c.o ? ((c.c - c.o) / c.o) * 100 : 0;
+  const cls = rate > 0 ? "up" : rate < 0 ? "down" : "flat";
+  const when = c.t > 1e11 ? new Date(c.t).toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : `구간 ${idx + 1}`;
+  tip.innerHTML = `
+    <div class="tip-when">${esc(when)}</div>
+    <div class="tip-row"><span>시작</span><b>${fmtNum(c.o)}</b></div>
+    <div class="tip-row"><span>마지막</span><b>${fmtNum(c.c)}</b></div>
+    <div class="tip-row"><span>최고</span><b class="up">${fmtNum(c.h)}</b></div>
+    <div class="tip-row"><span>최저</span><b class="down">${fmtNum(c.l)}</b></div>
+    <div class="tip-row"><span>거래량</span><b>${fmtNum(c.v)}</b></div>
+    <div class="tip-row"><span>등락률</span><b class="${cls}">${rate >= 0 ? "+" : ""}${rate.toFixed(2)}%</b></div>`;
+  tip.classList.remove("hidden");
+  // 캔들 위치 근처에 배치 (좌/우 넘침 방지)
+  const x = idx * chartGeom.cw + chartGeom.cw / 2;
+  const place = x > chartGeom.plotW * 0.6 ? "left" : "right";
+  tip.style.left = place === "right" ? `${x + 10}px` : "";
+  tip.style.right = place === "left" ? `${chartGeom.cssW - x + 10}px` : "";
+  tip.style.top = "8px";
+}
+function hideChartTip() {
+  const tip = $("chartTip");
+  if (tip) tip.classList.add("hidden");
+}
+
+function renderCandles(canvas, candles, basePrice, hoverIndex) {
   if (!canvas) return;
   const dpr = window.devicePixelRatio || 1;
   const cssW = canvas.clientWidth || 600;
@@ -402,7 +532,7 @@ function renderCandles(canvas, candles, basePrice) {
   const ctx = canvas.getContext("2d");
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, cssW, cssH);
-  if (!candles.length) return;
+  if (!candles.length) { chartGeom = null; return; }
 
   const RIGHT = 56; // 우측 가격축 영역
   const plotW = cssW - RIGHT;
@@ -426,6 +556,13 @@ function renderCandles(canvas, candles, basePrice) {
   const axisText = getCSS("--muted") || "#999";
   const yP = (p) => priceH * (1 - (p - lo) / (hi - lo));
 
+  const n = Math.max(candles.length, 14); // 최소 칸 수 확보
+  const cw = plotW / n;
+  const bodyW = Math.max(2.5, Math.min(14, cw * 0.64));
+
+  // 렌더 좌표계 저장(포인터 → 캔들 매핑용)
+  chartGeom = { cw, plotW, priceH, volH, cssW, cssH, candles, base: basePrice, lo, hi };
+
   // 가로 그리드 + 우측 가격 라벨
   ctx.font = "11px Pretendard, sans-serif";
   ctx.textBaseline = "middle";
@@ -444,9 +581,18 @@ function renderCandles(canvas, candles, basePrice) {
     ctx.fillText(fmtNum(price), plotW + 6, Math.min(priceH - 6, Math.max(8, y)));
   }
 
-  const n = Math.max(candles.length, 14); // 최소 칸 수 확보
-  const cw = plotW / n;
-  const bodyW = Math.max(2.5, Math.min(14, cw * 0.64));
+  // 선택(호버) 캔들 세로 하이라이트
+  if (hoverIndex >= 0 && hoverIndex < candles.length) {
+    const hx = hoverIndex * cw + cw / 2;
+    ctx.strokeStyle = "rgba(120,140,180,0.55)";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(Math.round(hx) + 0.5, 0);
+    ctx.lineTo(Math.round(hx) + 0.5, cssH);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
 
   candles.forEach((c, i) => {
     const x = i * cw + cw / 2;

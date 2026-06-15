@@ -23,6 +23,7 @@ import {
 import * as game from "./game.js";
 import * as ui from "./ui.js";
 import * as site from "./siteConfig.js";
+import * as history from "./history.js";
 
 // 관리자 이메일 — 이 계정만 방을 만들고 없앨 수 있다
 // 관리자 — 이 Firebase UID(또는 이메일)만 방을 만들고 없앨 수 있다
@@ -38,6 +39,8 @@ const state = {
   roomData: null,
   selectedStockId: null,
   tickTimer: null, // 방장 전용: 1초 시장 틱
+  liveState: history.createLiveState(), // 방장 전용: 라이브 1분 캔들 누적
+  catchupDoneFor: null, // 이 방에서 catch-up 시도 완료 표시(중복 방지)
   clockTimer: null, // 남은 시간 표시용
   roomRef: null,
   lastStatus: null,
@@ -478,6 +481,8 @@ function onRoomUpdate(room) {
     ui.renderGame(state);
     // 방장에게만 '게임 종료' 버튼 노출
     document.getElementById("btnEndGame").classList.toggle("hidden", room.hostId !== state.uid);
+    // 방 로드 시 1회: 사람이 없던 시간(경과)을 보정 (중복은 lock 으로 방지)
+    void maybeCatchUp(room);
     // 방장이면 시장 틱 구동 (새로고침 후 재접속해도 다시 시작됨)
     if (room.hostId === state.uid) startTicking();
   } else if (room.status === "ended") {
@@ -488,6 +493,26 @@ function onRoomUpdate(room) {
     ui.renderResult(room, state.uid);
   }
   state.lastStatus = room.status;
+}
+
+// ----- 방 로드 시 경과 보정 (battle 이 1차 보정 주체) -----
+// needsCatchup 일 때만, 방당 1회 시도. lock 으로 다중 접속 중복 보정 방지.
+async function maybeCatchUp(room) {
+  if (!room || room.status !== "playing") return;
+  // 보정 쓰기 권한은 방장 또는 관리자만(DB 규칙). 일반 플레이어는 읽기만 — 방장이 보정한다.
+  if (room.hostId !== state.uid && !state.isDbAdmin && !isAdmin()) return;
+  if (state.catchupDoneFor === state.roomCode) return;
+  if (!history.needsCatchup(room)) { state.catchupDoneFor = state.roomCode; return; }
+  state.catchupDoneFor = state.roomCode; // 시도 표시(반복 호출 방지)
+  try {
+    const res = await history.runCatchUp(state.roomCode, room, state.uid);
+    if (res.applied) {
+      ui.resetLocalHistory();
+      ui.showToast(`시장 경과 보정 완료 (${Math.round(res.elapsed / 60000)}분, 캔들 ${res.candlesWritten}개)`, "up");
+    }
+  } catch (e) {
+    console.warn("[catchup] 보정 실패:", e);
+  }
 }
 
 // ----- 방장 전용: 시장 틱 (game.TICK_MS 간격) -----
@@ -503,6 +528,8 @@ function startTicking() {
       await game.processIpo(state.roomCode, room);
       // 예약(지정가) 주문 점검·체결
       await game.processOrders(state.roomCode, room);
+      // 압축 캔들 히스토리: 매 tick 저장 대신 1분 경계에서만 부분 저장
+      await history.flushLiveCandles(state.roomCode, room, state.liveState);
     } catch (e) {
       console.error("[tick] 시장 틱 오류:", e);
     }
@@ -565,6 +592,8 @@ function leaveToHome(msg) {
   state.roomData = null;
   state.selectedStockId = null;
   state.lastStatus = null;
+  state.catchupDoneFor = null;
+  state.liveState = history.createLiveState();
   localStorage.removeItem("mb_roomCode");
   goHome();
   if (msg) ui.setMsg("homeMsg", msg, false);
