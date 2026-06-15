@@ -537,6 +537,26 @@ input:focus {
 .cp-btn:hover { border-color: var(--text2); }
 .cp-btn.is-active { background: var(--text); color: #fff; border-color: var(--text); font-weight: 700; }
 
+/* 차트 보유 데이터 범위 안내 */
+.chart-range-note { margin: 2px 0 4px; font-size: 11.5px; color: var(--muted); min-height: 14px; }
+
+/* 4초 tick 체감: LIVE 배지 + 다음 변동 카운트다운 */
+.live-badge {
+  display: inline-flex; align-items: center; gap: 5px; margin-left: 8px;
+  padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 800;
+  color: var(--up); background: var(--up-soft); vertical-align: middle;
+}
+.live-badge small { color: var(--muted); font-weight: 700; }
+.live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--up); animation: livePulse 1.6s ease-in-out infinite; }
+@keyframes livePulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .35; transform: scale(.7); } }
+/* 다음 변동까지 진행바 (4초 주기로 채워짐) */
+.tick-progress { height: 3px; border-radius: 3px; background: var(--border2); overflow: hidden; margin: 6px 0 2px; }
+.tick-progress span { display: block; height: 100%; width: 0; background: var(--brand-grad); transition: width .25s linear; }
+@media (prefers-reduced-motion: reduce) {
+  .live-dot { animation: none; }
+  .tick-progress span { transition: none; }
+}
+
 /* 차트 상세 정보 카드 (호버/터치) */
 .chart-tip {
   position: absolute; z-index: 5; min-width: 132px; pointer-events: none;

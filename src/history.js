@@ -108,7 +108,11 @@ function simulateStock(stock, fromT, toT, numSteps) {
       lo = Math.min(lo, cur);
     }
     const close = roundToTick(cur);
-    const vol = Math.round((300 + Math.random() * 2200) * activ * (1 + heat * 0.8) * clamp(ticksPerCandle / 15, 0.5, 40));
+    // 거래량: 실제 4초 tick 약 ticksPerCandle 회가 누적된 것처럼 — tick당 봇 거래량 × tick수 ×
+    // (변동폭이 클수록 증가). 라이브 1분봉(≈15tick 누적)과 비슷한 수준이 되도록 스케일.
+    const chg = open ? Math.abs((close - open) / open) : 0;
+    const perTickVol = (400 + Math.random() * 1800) * activ * (1 + heat * 0.8);
+    const vol = Math.round(perTickVol * ticksPerCandle * (1 + chg * 8));
     candles.push({
       t: t0,
       o: roundToTick(open),

@@ -11,6 +11,7 @@ import {
   roleLabel,
   ipoRatio,
   myOrders,
+  TICK_MS,
 } from "./game.js";
 import { readSeries } from "./history.js";
 
@@ -437,16 +438,36 @@ function getCSS(name) {
   return getComputedStyle(document.body).getPropertyValue(name).trim() || "#000";
 }
 
-// 기간 → tier/개수 매핑 (STONK 게임 구조: 1틱/1일/3일/1주/1달/전체)
-//  1틱: 방금 움직임(로컬 현재 캔들 우선) / 1일: 1m·5m / 3일: 5m·15m / 1주: 15m·1h / 1달: 1h·15m / 전체: 가장 넓게
+// 기간 → 시간창(실제 t 필터) + tier 후보(이상적 입도 우선, 데이터 짧으면 더 촘촘한 tier로 fallback) + 개수
+// 핵심: 실제 timestamp 로 필터링한다. 없는 기간을 현재 tick 데이터로 가짜 확장하지 않는다.
 const PERIOD_MAP = {
-  "tick": { tiers: ["candles1m", "candles5m"], count: 12 },
-  "1d": { tiers: ["candles1m", "candles5m"], count: 240 },
-  "3d": { tiers: ["candles5m", "candles15m"], count: 216 },
-  "1w": { tiers: ["candles15m", "candles1h"], count: 224 },
-  "1m": { tiers: ["candles1h", "candles15m"], count: 360 },
-  "all": { tiers: ["candles1h", "candles15m", "candles5m", "candles1m"], count: 500 },
+  "tick": { win: 30 * 60000, tiers: ["candles1m", "candles5m"], count: 16 },
+  "1d": { win: 86400000, tiers: ["candles5m", "candles1m"], count: 288 },
+  "3d": { win: 259200000, tiers: ["candles1h", "candles15m", "candles5m"], count: 216 },
+  "1w": { win: 604800000, tiers: ["candles1h", "candles15m"], count: 224 },
+  "1m": { win: 2592000000, tiers: ["candles1h", "candles15m", "candles5m", "candles1m"], count: 360 },
+  "all": { win: Infinity, tiers: ["candles1h", "candles15m", "candles5m", "candles1m"], count: 500 },
 };
+const PERIOD_LABEL = { "tick": "1틱", "1d": "1일", "3d": "3일", "1w": "1주", "1m": "1달", "all": "전체" };
+function spanTextKo(ms) {
+  if (ms <= 0) return "0분";
+  const m = Math.round(ms / 60000);
+  if (m < 60) return m + "분";
+  const h = Math.floor(m / 60), mm = m % 60;
+  if (h < 24) return mm ? `${h}시간 ${mm}분` : `${h}시간`;
+  const d = Math.floor(h / 24), hh = h % 24;
+  return hh ? `${d}일 ${hh}시간` : `${d}일`;
+}
+function rangeNoteText(period, candles) {
+  const lab = PERIOD_LABEL[period] || period;
+  if (!candles || !candles.length) return lab + " · 데이터 없음";
+  if (period === "tick") return "1틱 · 최근 흐름";
+  const first = candles[0].t, last = candles[candles.length - 1].t;
+  if (!(first > 1e11) || !(last > 1e11)) return lab + " · 최근 흐름";
+  const span = last - first, win = (PERIOD_MAP[period] || {}).win;
+  if (win && win !== Infinity && span < win * 0.9) return `${lab} · 아직 ${spanTextKo(span)} 데이터만 있음`;
+  return `${lab} · 누적 ${spanTextKo(span)} 데이터`;
+}
 
 // ── 기간별 시간 표시 (브라우저 local time 기준) ──
 function p2(n) { return (n < 10 ? "0" : "") + n; }
@@ -481,15 +502,17 @@ function appendLive(series, stock) {
   return series;
 }
 
-// 선택 종목의 차트 시리즈 구성: Firebase 압축 캔들 + 로컬 누적 캔들 병합(끊김 방지)
+// 선택 종목의 차트 시리즈 구성: 실제 timestamp 로 기간 필터링(가짜 확장 없음)
 function buildSeries(stock, id, period) {
   const map = PERIOD_MAP[period] || PERIOD_MAP["1d"];
   const hist = stock.history || null;
   const local = localCandles[id] || [];
+  const now = Date.now();
+  const cutoff = map.win === Infinity ? -Infinity : now - map.win;
 
   // 1틱: "방금 움직임" — 로컬 현재 캔들(초단기) 우선, 없으면 candles1m 최근 일부
   if (period === "tick") {
-    let s = local.slice(-12).map((c, i) => ({ t: c.t || i, o: c.o, h: c.h, l: c.l, c: c.c, v: c.v || 0 }));
+    let s = local.slice(-12).map((c, i) => ({ t: c.t || (now - (12 - i) * 6000), o: c.o, h: c.h, l: c.l, c: c.c, v: c.v || 0 }));
     if (s.length < 2 && hist) {
       const fb = readSeries(hist, "candles1m");
       if (fb.length) s = fb.slice(-map.count).map((c) => ({ ...c }));
@@ -497,23 +520,24 @@ function buildSeries(stock, id, period) {
     return appendLive(s, stock);
   }
 
+  // tier 후보를 차례로: 실제 t 기준 cutoff 필터 후 충분하면 채택(짧으면 더 촘촘한 tier)
   let series = [];
   if (hist) {
     for (const tk of map.tiers) {
-      const s = readSeries(hist, tk);
-      if (s.length) { series = s.map((c) => ({ ...c })); break; }
+      let arr = readSeries(hist, tk);
+      if (!arr.length) continue;
+      arr = arr.filter((c) => c.t >= cutoff);
+      if (arr.length >= 2) { series = arr.map((c) => ({ ...c })); break; }
+      if (!series.length && arr.length) series = arr.map((c) => ({ ...c }));
     }
   }
-  // Firebase 히스토리가 없으면(갓 시작/구버전) 로컬 누적 캔들로 대체 — 차트가 비지 않게
-  if (!series.length) {
-    series = local.map((c, i) => ({ t: c.t || i, o: c.o, h: c.h, l: c.l, c: c.c, v: c.v || 0 }));
-  } else if (local.length) {
-    // 최신 실시간 흐름을 마지막에 이어 붙여 현재가까지 연속되게(실 timestamp 유지)
-    const lastT = series[series.length - 1].t;
-    const tail = local.slice(-Math.min(local.length, 8));
-    tail.forEach((c, i) => series.push({ t: (c.t && c.t > lastT) ? c.t : lastT + i + 1, o: c.o, h: c.h, l: c.l, c: c.c, v: c.v || 0 }));
+  // Firebase 히스토리가 전혀 없을 때만(갓 시작) 로컬 누적 캔들로 대체 — 차트가 비지 않게
+  if (!series.length && local.length) {
+    series = local
+      .map((c, i) => ({ t: c.t || (now - (local.length - i) * 6000), o: c.o, h: c.h, l: c.l, c: c.c, v: c.v || 0 }))
+      .filter((c) => c.t >= cutoff);
   }
-  series = appendLive(series, stock);
+  series = appendLive(series, stock); // 현재가 캔들 1개만 이어 붙임(가짜 확장 아님)
   if (series.length > map.count) series = series.slice(series.length - map.count);
   return series;
 }
@@ -525,6 +549,8 @@ function drawChart(room, id, base, stock) {
   chartHover = -1;
   hideChartTip();
   renderCandles($("priceChart"), series, base, -1);
+  const note = $("chartRangeNote");
+  if (note) note.textContent = rangeNoteText(chartPeriod, series);
   setupChartInteraction();
 }
 
@@ -935,6 +961,22 @@ function renderNewsBar(room) {
   }
   bar.classList.remove("hidden");
   bar.textContent = `📢 ${latest.text}`;
+}
+
+// ----- 4초 tick 체감 개선: 다음 변동까지 진행바 + 카운트다운 (tick 간격은 그대로) -----
+export function updateTickProgress(room) {
+  const bar = $("tickBar");
+  const cd = $("tickCountdown");
+  if (!bar) return;
+  const lastTick = (room && (room.marketTick || (room.market && room.market.lastTickAt))) || 0;
+  if (!lastTick) { bar.style.width = "0%"; if (cd) cd.textContent = ""; return; }
+  const since = Date.now() - lastTick;
+  const frac = Math.max(0, Math.min(1, since / TICK_MS));
+  bar.style.width = (frac * 100).toFixed(1) + "%";
+  if (cd) {
+    const left = Math.max(0, Math.ceil((TICK_MS - since) / 1000));
+    cd.textContent = left > 0 ? left + "s" : "곧";
+  }
 }
 
 // ----- 경과 시간 표시 (카운트업) -----

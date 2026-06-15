@@ -552,6 +552,7 @@ function startClock() {
     if (!room || room.status !== "playing") return;
     ui.updateTimer(Date.now() - (room.startedAt || Date.now()));
     ui.tickIpoCountdown(room); // 공모 청약 마감 카운트다운
+    ui.updateTickProgress(room); // 다음 변동까지 진행바/카운트다운 (체감 개선, tick 간격 불변)
   }, 250);
 }
 

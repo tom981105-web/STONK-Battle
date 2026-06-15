@@ -148,7 +148,9 @@
           <div class="detail-price">
             <b id="selStockPrice" class="big-price">-</b>
             <span id="selStockChange" class="change"></span>
+            <span class="live-badge" title="실시간 시장"><span class="live-dot"></span>LIVE <small id="tickCountdown"></small></span>
           </div>
+          <div class="tick-progress" aria-hidden="true"><span id="tickBar"></span></div>
         </div>
         <div class="ohlc-grid">
           <div class="ohlc-cell"><span class="ohlc-k">시가</span><b id="ohlcOpen" class="ohlc-v">-</b></div>
@@ -168,6 +170,7 @@
           <button class="cp-btn" data-period="1m" type="button">1달</button>
           <button class="cp-btn" data-period="all" type="button">전체</button>
         </div>
+        <p id="chartRangeNote" class="chart-range-note"></p>
         <div class="chart-wrap"><canvas id="priceChart"></canvas><div id="chartTip" class="chart-tip hidden"></div></div>
       </main>
 
