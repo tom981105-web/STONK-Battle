@@ -338,16 +338,38 @@ function arrow(rate) {
   return rate > 0 ? "▲" : rate < 0 ? "▼" : "−";
 }
 
+// 종목 검색어 (name/id/sector/type/role/badge 대상). main.js 가 setStockQuery 로 설정.
+let stockQuery = "";
+export function setStockQuery(q) { stockQuery = (q || "").trim().toLowerCase(); }
+function matchStock(id, s) {
+  if (!stockQuery) return true;
+  const parts = [
+    s.name, id, s.ticker, s.sector, s.type, s.role,
+    typeLabel(s.type), roleLabel(s.role),
+    String(id).startsWith("ipo") ? "신규상장 new" : "",
+  ];
+  return parts.join(" ").toLowerCase().includes(stockQuery);
+}
+
 function renderStockList(room, selectedStockId) {
   const list = $("stockList");
   const stocks = room.stocks || {};
   list.innerHTML = "";
-  // 관심종목을 위로 정렬
-  const entries = Object.entries(stocks).sort((a, b) => {
-    const aw = watchSet.has(a[1].name) ? 0 : 1;
-    const bw = watchSet.has(b[1].name) ? 0 : 1;
-    return aw - bw;
-  });
+  // 관심종목을 위로 정렬 + 검색어 필터
+  const entries = Object.entries(stocks)
+    .filter(([id, s]) => matchStock(id, s))
+    .sort((a, b) => {
+      const aw = watchSet.has(a[1].name) ? 0 : 1;
+      const bw = watchSet.has(b[1].name) ? 0 : 1;
+      return aw - bw;
+    });
+  if (!entries.length) {
+    const li = document.createElement("li");
+    li.className = "muted stock-empty";
+    li.textContent = stockQuery ? "검색 결과 없음" : "종목이 없습니다";
+    list.appendChild(li);
+    return;
+  }
   entries.forEach(([id, s]) => {
     const li = document.createElement("li");
     li.className = "stock-item" + (id === selectedStockId ? " selected" : "");

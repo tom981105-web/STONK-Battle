@@ -456,12 +456,15 @@ input:focus {
 .detail-head {
   display: flex;
   justify-content: space-between;
-  align-items: flex-end;
+  align-items: flex-start;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 14px;
+  gap: 8px 14px;
+  margin-bottom: 8px;
 }
-.detail-name { font-size: 19px; font-weight: 800; display: flex; align-items: center; gap: 8px; }
+.detail-name { font-size: 19px; font-weight: 800; display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1 1 auto; }
+/* 우측 가격 그룹: 현재가 + (등락률 · LIVE) 를 한 덩어리로 우측 정렬 */
+.price-cluster { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; margin-left: auto; line-height: 1.15; }
+.price-sub { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
 .virtual-tag {
   font-size: 10.5px;
   font-weight: 700;
@@ -470,9 +473,8 @@ input:focus {
   padding: 2px 7px;
   border-radius: 6px;
 }
-.detail-price { text-align: right; line-height: 1.2; }
 .big-price { font-size: 28px; font-weight: 800; font-variant-numeric: tabular-nums; }
-.change { display: block; font-size: 14px; font-weight: 700; margin-top: 2px; }
+.change { font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
 
 /* 가격 변동 플래시 */
 @keyframes flashUp { 0% { background: var(--up-soft); } 100% { background: transparent; } }
@@ -505,6 +507,22 @@ input:focus {
   min-height: 18px;
   margin-bottom: 10px;
 }
+
+/* 종목 검색창 */
+.stock-search { position: relative; margin: 0 0 8px; }
+.stock-search input {
+  width: 100%; height: 38px; padding: 0 32px 0 12px; font-size: 14px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--card); color: var(--text);
+}
+.stock-search input::placeholder { color: var(--muted); }
+.stock-search input:focus { border-color: var(--brand); outline: none; }
+.stock-search-clear {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  width: 24px; height: 24px; border: none; background: var(--bg2); color: var(--muted);
+  border-radius: 50%; font-size: 12px; cursor: pointer; line-height: 1;
+}
+.stock-search-clear:hover { color: var(--text); }
+.stock-empty { padding: 18px 8px; text-align: center; font-size: 13px; }
 
 /* 시장 상태 칩 + 패널 (진단 UI) */
 .status-chip { display: inline-flex; align-items: center; gap: 6px; border: none; }
@@ -542,7 +560,7 @@ input:focus {
 
 /* 4초 tick 체감: LIVE 배지 + 다음 변동 카운트다운 */
 .live-badge {
-  display: inline-flex; align-items: center; gap: 5px; margin-left: 8px;
+  display: inline-flex; align-items: center; gap: 5px;
   padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 800;
   color: var(--up); background: var(--up-soft); vertical-align: middle;
 }
@@ -550,7 +568,7 @@ input:focus {
 .live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--up); animation: livePulse 1.6s ease-in-out infinite; }
 @keyframes livePulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .35; transform: scale(.7); } }
 /* 다음 변동까지 진행바 (4초 주기로 채워짐) */
-.tick-progress { height: 3px; border-radius: 3px; background: var(--border2); overflow: hidden; margin: 6px 0 2px; }
+.tick-progress { height: 3px; border-radius: 3px; background: var(--border2); overflow: hidden; margin: 0 0 12px; }
 .tick-progress span { display: block; height: 100%; width: 0; background: var(--brand-grad); transition: width .25s linear; }
 @media (prefers-reduced-motion: reduce) {
   .live-dot { animation: none; }

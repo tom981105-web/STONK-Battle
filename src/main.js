@@ -932,6 +932,26 @@ function bindEvents() {
   // 공모주 청약
   document.getElementById("btnApplyIpo").addEventListener("click", doApplyIpo);
 
+  // 종목 검색 (즉시 필터, 추가 구독 없음 — roomData 재사용)
+  const stockSearch = document.getElementById("stockSearch");
+  const stockSearchClear = document.getElementById("stockSearchClear");
+  if (stockSearch) {
+    stockSearch.addEventListener("input", () => {
+      ui.setStockQuery(stockSearch.value);
+      if (stockSearchClear) stockSearchClear.hidden = !stockSearch.value;
+      if (state.roomData) ui.renderGame(state);
+    });
+  }
+  if (stockSearchClear) {
+    stockSearchClear.addEventListener("click", () => {
+      stockSearch.value = "";
+      ui.setStockQuery("");
+      stockSearchClear.hidden = true;
+      stockSearch.focus();
+      if (state.roomData) ui.renderGame(state);
+    });
+  }
+
   // 시장 상태 패널 펼치기/접기 (추가 구독 없음 — roomData 재사용)
   const msChip = document.getElementById("marketStatusChip");
   if (msChip) {

@@ -138,6 +138,10 @@
       <!-- 좌측: 가상 회사 목록 -->
       <aside class="card panel list-panel">
         <h3 class="panel-title">관심 종목</h3>
+        <div class="stock-search">
+          <input id="stockSearch" type="search" inputmode="search" placeholder="종목명, 업종 검색" autocomplete="off" spellcheck="false" />
+          <button id="stockSearchClear" class="stock-search-clear" type="button" title="검색 지우기" hidden>✕</button>
+        </div>
         <ul id="stockList" class="stock-list"></ul>
       </aside>
 
@@ -145,13 +149,15 @@
       <main class="card panel stock-detail">
         <div class="detail-head">
           <div class="detail-name"><span id="chartStockName">-</span><span id="detailTag" class="virtual-tag">가상</span><button id="btnAlert" class="alert-btn" title="가격 알림 설정">🔔</button></div>
-          <div class="detail-price">
+          <div class="price-cluster">
             <b id="selStockPrice" class="big-price">-</b>
-            <span id="selStockChange" class="change"></span>
-            <span class="live-badge" title="실시간 시장"><span class="live-dot"></span>LIVE <small id="tickCountdown"></small></span>
+            <div class="price-sub">
+              <span id="selStockChange" class="change"></span>
+              <span class="live-badge" title="실시간 시장"><span class="live-dot"></span>LIVE <small id="tickCountdown"></small></span>
+            </div>
           </div>
-          <div class="tick-progress" aria-hidden="true"><span id="tickBar"></span></div>
         </div>
+        <div class="tick-progress" aria-hidden="true"><span id="tickBar"></span></div>
         <div class="ohlc-grid">
           <div class="ohlc-cell"><span class="ohlc-k">시가</span><b id="ohlcOpen" class="ohlc-v">-</b></div>
           <div class="ohlc-cell"><span class="ohlc-k">고가</span><b id="ohlcHigh" class="ohlc-v">-</b></div>
