@@ -122,7 +122,7 @@ function accumulateLocal(room, roomCode) {
   }
 
   for (const [id, s] of Object.entries(stocks)) {
-    if (!localCandles[id]) localCandles[id] = [{ o: s.price, h: s.price, l: s.price, c: s.price, v: 0, _n: 0 }];
+    if (!localCandles[id]) localCandles[id] = [{ t: Date.now(), o: s.price, h: s.price, l: s.price, c: s.price, v: 0, _n: 0 }];
     if (lastVolume[id] == null) lastVolume[id] = s.volume || 0;
   }
   if (tick !== lastTickSeen) {
@@ -131,7 +131,7 @@ function accumulateLocal(room, roomCode) {
       const arr = localCandles[id] || (localCandles[id] = []);
       let cur = arr[arr.length - 1];
       if (!cur || cur._n >= CANDLE_TICKS) {
-        cur = { o: s.price, h: s.price, l: s.price, c: s.price, v: 0, _n: 0 };
+        cur = { t: Date.now(), o: s.price, h: s.price, l: s.price, c: s.price, v: 0, _n: 0 };
         arr.push(cur);
       }
       cur.c = s.price;
@@ -227,6 +227,50 @@ export function renderGame(state) {
   renderNewsBar(room);
   renderIpoPanel(room, uid);
   renderOrders(room, uid);
+  renderMarketStatus(state);
+}
+
+// ----- 시장/연결 상태 (작은 진단 UI) -----
+// 추가 Firebase 구독 없음 — 이미 구독 중인 roomData 를 재사용한다.
+export function renderMarketStatus(state) {
+  const room = state.roomData;
+  const chip = $("marketStatusChip");
+  const dot = $("msDot");
+  const label = $("msLabel");
+  const panel = $("marketStatusPanel");
+  if (!room || !chip || !dot || !label || !panel) return;
+  const m = room.market || {};
+  const lastTick = m.lastTickAt || room.marketTick || 0;
+  const lastCatch = m.lastCatchupAt || 0;
+  const staleMin = lastTick ? Math.max(0, Math.round((Date.now() - lastTick) / 60000)) : null;
+  const isHost = room.hostId === state.uid;
+
+  // 전 종목 캔들 수 집계
+  let c1 = 0, c5 = 0, c15 = 0, c1h = 0;
+  for (const s of Object.values(room.stocks || {})) {
+    const h = s.history; if (!h) continue;
+    if (h.candles1m) c1 += Object.keys(h.candles1m).length;
+    if (h.candles5m) c5 += Object.keys(h.candles5m).length;
+    if (h.candles15m) c15 += Object.keys(h.candles15m).length;
+    if (h.candles1h) c1h += Object.keys(h.candles1h).length;
+  }
+  const hasCandles = c1 + c5 + c15 + c1h > 0;
+
+  const fresh = staleMin != null && staleMin < 2;
+  dot.className = "status-dot " + (fresh ? "ok" : staleMin == null ? "muted" : "warn");
+  label.textContent = fresh ? "시장 최신" : staleMin == null ? "대기" : `${staleMin}분 전`;
+
+  if (panel.classList.contains("hidden")) return; // 펼쳤을 때만 상세 렌더
+  const hhmm = (t) => (t ? `${p2(new Date(t).getHours())}:${p2(new Date(t).getMinutes())}` : "-");
+  const row = (k, v, cls) => `<div class="ms-row"><span>${k}</span><b class="${cls || ""}">${v}</b></div>`;
+  panel.innerHTML =
+    row("방 코드", esc(state.roomCode || "-")) +
+    row("연결", "연결됨", "up") +
+    row("권한", isHost ? "보정 주체 (방장)" : "읽기 전용", isHost ? "" : "muted") +
+    row("마지막 tick", hhmm(lastTick)) +
+    row("마지막 보정", lastCatch ? hhmm(lastCatch) : "없음") +
+    row("시장", fresh ? "최신 상태" : staleMin == null ? "tick 기록 없음" : `${staleMin}분 전 데이터 · ${isHost ? "재접속 시 자동 보정" : "방장/관리자가 보정"}`, fresh ? "up" : "down") +
+    row("캔들", hasCandles ? `1m ${c1} · 5m ${c5} · 15m ${c15} · 1h ${c1h}` : "아직 없음");
 }
 
 // ----- 내 예약(지정가) 주문 목록 -----
@@ -393,15 +437,33 @@ function getCSS(name) {
   return getComputedStyle(document.body).getPropertyValue(name).trim() || "#000";
 }
 
-// 기간 → tier/개수 매핑 (게임시간≠실시간이므로 보유 history 에 맞춰 매핑)
+// 기간 → tier/개수 매핑 (STONK 게임 구조: 1틱/1일/3일/1주/1달/전체)
+//  1틱: 방금 움직임(로컬 현재 캔들 우선) / 1일: 1m·5m / 3일: 5m·15m / 1주: 15m·1h / 1달: 1h·15m / 전체: 가장 넓게
 const PERIOD_MAP = {
-  "1d": { tiers: ["candles1m"], count: 120 },
-  "1w": { tiers: ["candles5m", "candles1m"], count: 160 },
-  "3m": { tiers: ["candles15m", "candles5m"], count: 180 },
-  "1y": { tiers: ["candles1h", "candles15m"], count: 168 },
-  "5y": { tiers: ["candles1h"], count: 168 },
-  "all": { tiers: ["candles1h", "candles15m", "candles5m", "candles1m"], count: 400 },
+  "tick": { tiers: ["candles1m", "candles5m"], count: 12 },
+  "1d": { tiers: ["candles1m", "candles5m"], count: 240 },
+  "3d": { tiers: ["candles5m", "candles15m"], count: 216 },
+  "1w": { tiers: ["candles15m", "candles1h"], count: 224 },
+  "1m": { tiers: ["candles1h", "candles15m"], count: 360 },
+  "all": { tiers: ["candles1h", "candles15m", "candles5m", "candles1m"], count: 500 },
 };
+
+// ── 기간별 시간 표시 (브라우저 local time 기준) ──
+function p2(n) { return (n < 10 ? "0" : "") + n; }
+function fmtChartTime(t, period) {
+  if (!(t > 1e11)) return ""; // 합성 인덱스(실 timestamp 아님)면 비움
+  const d = new Date(t);
+  const hm = p2(d.getHours()) + ":" + p2(d.getMinutes());
+  const md = (d.getMonth() + 1) + "/" + d.getDate();
+  if (period === "tick" || period === "1d") return hm;
+  if (period === "3d" || period === "1w") return md + " " + hm;
+  return md;
+}
+function fmtChartFull(t) {
+  if (!(t > 1e11)) return "";
+  const d = new Date(t);
+  return (d.getMonth() + 1) + "/" + p2(d.getDate()) + " " + p2(d.getHours()) + ":" + p2(d.getMinutes());
+}
 
 let chartPeriod = "1d";
 let chartHover = -1; // 선택(호버/터치)된 캔들 인덱스
@@ -409,10 +471,32 @@ let chartGeom = null; // 마지막 렌더 좌표계 { cw, plotW, priceH, volH, y
 let chartCtx = null; // { room, id, base }
 let chartBound = false;
 
+// 현재가가 마지막 종가와 다르면 현재가 캔들을 이어 붙여 연속·현재가 강조
+function appendLive(series, stock) {
+  if (series.length && stock.price != null && series[series.length - 1].c !== stock.price) {
+    const last = series[series.length - 1];
+    const t = last.t > 1e11 ? last.t + 1000 : last.t + 1;
+    series.push({ t, o: last.c, h: Math.max(last.c, stock.price), l: Math.min(last.c, stock.price), c: stock.price, v: 0, _live: true });
+  }
+  return series;
+}
+
 // 선택 종목의 차트 시리즈 구성: Firebase 압축 캔들 + 로컬 누적 캔들 병합(끊김 방지)
 function buildSeries(stock, id, period) {
   const map = PERIOD_MAP[period] || PERIOD_MAP["1d"];
   const hist = stock.history || null;
+  const local = localCandles[id] || [];
+
+  // 1틱: "방금 움직임" — 로컬 현재 캔들(초단기) 우선, 없으면 candles1m 최근 일부
+  if (period === "tick") {
+    let s = local.slice(-12).map((c, i) => ({ t: c.t || i, o: c.o, h: c.h, l: c.l, c: c.c, v: c.v || 0 }));
+    if (s.length < 2 && hist) {
+      const fb = readSeries(hist, "candles1m");
+      if (fb.length) s = fb.slice(-map.count).map((c) => ({ ...c }));
+    }
+    return appendLive(s, stock);
+  }
+
   let series = [];
   if (hist) {
     for (const tk of map.tiers) {
@@ -421,20 +505,15 @@ function buildSeries(stock, id, period) {
     }
   }
   // Firebase 히스토리가 없으면(갓 시작/구버전) 로컬 누적 캔들로 대체 — 차트가 비지 않게
-  const local = localCandles[id] || [];
   if (!series.length) {
-    series = local.map((c, i) => ({ t: i, o: c.o, h: c.h, l: c.l, c: c.c, v: c.v || 0 }));
+    series = local.map((c, i) => ({ t: c.t || i, o: c.o, h: c.h, l: c.l, c: c.c, v: c.v || 0 }));
   } else if (local.length) {
-    // 최신 실시간 흐름을 마지막에 이어 붙여 현재가까지 연속되게
+    // 최신 실시간 흐름을 마지막에 이어 붙여 현재가까지 연속되게(실 timestamp 유지)
     const lastT = series[series.length - 1].t;
     const tail = local.slice(-Math.min(local.length, 8));
-    tail.forEach((c, i) => series.push({ t: lastT + i + 1, o: c.o, h: c.h, l: c.l, c: c.c, v: c.v || 0 }));
+    tail.forEach((c, i) => series.push({ t: (c.t && c.t > lastT) ? c.t : lastT + i + 1, o: c.o, h: c.h, l: c.l, c: c.c, v: c.v || 0 }));
   }
-  // 현재가가 마지막 종가와 다르면 현재가 캔들 보정(현재가 강조용)
-  if (series.length && stock.price != null && series[series.length - 1].c !== stock.price) {
-    const last = series[series.length - 1];
-    series.push({ t: last.t + 1, o: last.c, h: Math.max(last.c, stock.price), l: Math.min(last.c, stock.price), c: stock.price, v: 0, _live: true });
-  }
+  series = appendLive(series, stock);
   if (series.length > map.count) series = series.slice(series.length - map.count);
   return series;
 }
@@ -500,7 +579,7 @@ function showChartTip(idx) {
   if (!c) return;
   const rate = c.o ? ((c.c - c.o) / c.o) * 100 : 0;
   const cls = rate > 0 ? "up" : rate < 0 ? "down" : "flat";
-  const when = c.t > 1e11 ? new Date(c.t).toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : `구간 ${idx + 1}`;
+  const when = fmtChartFull(c.t) || `구간 ${idx + 1}`;
   tip.innerHTML = `
     <div class="tip-when">${esc(when)}</div>
     <div class="tip-row"><span>시작</span><b>${fmtNum(c.o)}</b></div>
@@ -647,6 +726,23 @@ function renderCandles(canvas, candles, basePrice, hoverIndex) {
     ctx.fillStyle = "#fff";
     ctx.textAlign = "left";
     ctx.fillText(label, bx + 5, ly);
+  }
+
+  // x축 시간 라벨 (처음/중간/끝, 실제 t 값·local time 기준)
+  if (candles.length >= 2) {
+    ctx.font = "10px Pretendard, sans-serif";
+    ctx.fillStyle = axisText;
+    const marks = [0, Math.floor((candles.length - 1) / 2), candles.length - 1];
+    const seen = {};
+    marks.forEach((mi) => {
+      if (seen[mi]) return;
+      seen[mi] = 1;
+      const tlabel = fmtChartTime(candles[mi].t, chartPeriod);
+      if (!tlabel) return;
+      ctx.textAlign = mi === 0 ? "left" : mi === candles.length - 1 ? "right" : "center";
+      const tx = mi === 0 ? 2 : mi === candles.length - 1 ? plotW - 2 : (mi * cw + cw / 2);
+      ctx.fillText(tlabel, tx, cssH - 2);
+    });
   }
 }
 

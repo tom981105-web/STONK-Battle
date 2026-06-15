@@ -64,40 +64,51 @@ export function bestSeries(history) {
 }
 
 // ===== 오프라인 시뮬레이션: 한 종목을 fromT→toT 동안 step 캔들로 전개 =====
-// 실제 게임의 변동성(volat)·추세(trend) 성격을 가볍게 재현. 계산량은 numSteps 로 제한.
+// 핵심: catch-up 은 "살짝만 움직이는 보정"이 아니라, 사람이 없던 시간 동안 실제 4초 tick 이
+// 계속 돈 것처럼 가격 흐름을 재현한다. 따라서:
+//  - 각 캔들이 대표하는 실제 4초 tick 수(ticksPerCandle)를 기준으로 변동을 누적한다.
+//    → step 예산(numSteps)을 줄여도 분산은 sqrt(ticks) 로 보존되어 변동폭이 약해지지 않는다.
+//  - 평균회귀(base 로 끌어당김) 없음. 기준가(base)는 실시간 tick 과 동일하게 고정(±30% 밴드).
+//  - 추세(모멘텀)·과열(heat)·뉴스 충격을 실시간 marketTick 성격대로 반영 → 방향성 있는 큰 흐름.
+//  - 핀 고정 방지: ±30% 경계 근처에서만 약한 반발.
 function simulateStock(stock, fromT, toT, numSteps) {
   const stepMs = (toT - fromT) / numSteps;
-  const minsPer = Math.max(0.2, stepMs / 60_000); // 캔들 1개가 덮는 분
+  const ticksPerCandle = Math.max(1, stepMs / 4000); // 이 캔들 = 실제 4초 tick 몇 개분
   const volat = stock.volat || 1;
   const activ = stock.activ || 1;
-  let base = stock.basePrice || stock.price || MIN_PRICE;
+  const base = stock.basePrice || stock.price || MIN_PRICE; // 실시간과 동일: 기준가 고정
   let price = stock.price || base;
   let trend = stock.trend || 0;
-  const sigmaMin = 0.0045 * volat; // 분당 수익률 표준편차
+  let heat = stock.heat || 0;
   const isEquity = !stock.type || stock.type === "stock";
+  const perTick = 0.00115 * volat * (isEquity ? 1 : 0.7); // 실시간 1틱 own 표준편차 근사
+  const sub = 5;
   const candles = [];
 
   for (let i = 0; i < numSteps; i++) {
     const t0 = fromT + stepMs * i;
     const open = price;
-    // 추세 완만한 변화 + 평균회귀(base 로) — 한 방향 폭주 방지
-    trend = clamp(trend * 0.96 + randn() * 0.0006 * volat, -0.004, 0.004);
-    const revert = clamp((base - price) / base, -0.2, 0.2) * 0.03;
-    // 캔들 내부를 몇 점으로 나눠 고가/저가 형성
-    const sub = 4;
+    const tps = ticksPerCandle / sub; // sub-step 당 실제 tick 수
     let hi = open, lo = open, cur = open;
     for (let k = 0; k < sub; k++) {
-      const ret = (trend + revert) * (minsPer / sub) +
-        randn() * sigmaMin * Math.sqrt(minsPer / sub) +
-        (Math.random() < 0.01 ? randn() * 0.01 * (isEquity ? 1 : 0.6) : 0);
+      // 추세(모멘텀): 완만한 OU 워크 — 방향성은 주되 한 방향 폭주는 막음
+      trend = clamp(trend * Math.pow(0.99, tps) + randn() * 0.00028 * volat * Math.sqrt(tps), -0.0022, 0.0022);
+      // 과열(테마) 가끔 발동 → 변동/거래 일시 확대
+      if (Math.random() < 0.006 * tps) heat = clamp(heat + (0.3 + Math.random() * 0.7), 0, 1.8);
+      heat *= Math.pow(0.94, tps);
+      const effStd = perTick * (1 + heat * 0.6);
+      // 변동 = 추세*틱수 + 랜덤워크(분산은 틱수에 비례 → 경과시간만큼 누적·증가)
+      let ret = trend * tps + randn() * effStd * Math.sqrt(tps);
+      // 뉴스 한 방 충격(드물게)
+      if (Math.random() < 0.004 * tps) ret += (Math.random() < 0.5 ? 1 : -1) * (0.008 + Math.random() * 0.028) * (isEquity ? 1 : 0.6);
       cur = cur * (1 + ret);
-      cur = clamp(cur, lowerLimit(base), upperLimit(base));
+      cur = clamp(cur, lowerLimit(base), upperLimit(base)); // ±30% 하드 밴드(실시간과 동일)
       cur = Math.max(MIN_PRICE, cur);
       hi = Math.max(hi, cur);
       lo = Math.min(lo, cur);
     }
     const close = roundToTick(cur);
-    const vol = Math.round((300 + Math.random() * 2200) * activ * minsPer);
+    const vol = Math.round((300 + Math.random() * 2200) * activ * (1 + heat * 0.8) * clamp(ticksPerCandle / 15, 0.5, 40));
     candles.push({
       t: t0,
       o: roundToTick(open),
@@ -107,8 +118,6 @@ function simulateStock(stock, fromT, toT, numSteps) {
       v: vol,
     });
     price = close;
-    // 가끔 기준가(base)를 현재가 쪽으로 이동 → 장기 경과 시 ±30% 벽에 갇히지 않고 자연스레 흐름
-    if (Math.random() < 0.02 * minsPer) base = Math.round(base * 0.7 + price * 0.3);
   }
   return { candles, finalPrice: price, finalBase: base };
 }
@@ -224,7 +233,7 @@ export async function runCatchUp(roomCode, roomData, uid, opts = {}) {
       updates[P + "previousPrice"] = s.price;
       updates[P + "price"] = finalPrice;
       updates[P + "currentPrice"] = finalPrice; // 일부 리더가 currentPrice 를 읽음(호환)
-      updates[P + "basePrice"] = base;
+      // 기준가(base)는 실시간 tick 과 동일하게 고정 → basePrice 는 건드리지 않음(불필요 쓰기 제거)
       updates[P + "changeRate"] = +(((finalPrice - base) / base) * 100).toFixed(2);
       updates[P + "volume"] = (s.volume || 0) + volSum;
       updates[P + "value"] = (s.value || 0) + volSum * finalPrice;

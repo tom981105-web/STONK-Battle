@@ -1,5 +1,6 @@
 // src/main.js - 앱 진입점 (인증, 방 관리, 실시간 동기화, 이벤트 바인딩)
 import "./style.css";
+import "./stonk-ui.css"; // STONK 공용 디자인 시스템(토큰·폴리시) — style.css 뒤에서 토큰 덮어쓰기
 import { auth, db, isConfigured } from "./firebase.js";
 import {
   signInWithEmailAndPassword,
@@ -929,6 +930,18 @@ function bindEvents() {
 
   // 공모주 청약
   document.getElementById("btnApplyIpo").addEventListener("click", doApplyIpo);
+
+  // 시장 상태 패널 펼치기/접기 (추가 구독 없음 — roomData 재사용)
+  const msChip = document.getElementById("marketStatusChip");
+  if (msChip) {
+    msChip.addEventListener("click", () => {
+      const panel = document.getElementById("marketStatusPanel");
+      if (!panel) return;
+      const nowHidden = panel.classList.toggle("hidden");
+      msChip.setAttribute("aria-expanded", nowHidden ? "false" : "true");
+      if (!nowHidden && state.roomData) ui.renderMarketStatus(state);
+    });
+  }
 
   // 결과 → 홈
   document.getElementById("btnBackHome").addEventListener("click", () => leaveToHome());

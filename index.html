@@ -99,6 +99,9 @@
         <div class="chip"><span class="chip-k">코드</span><b id="gameRoomCode"></b><button id="btnCopyCode2" class="chip-btn">복사</button></div>
         <div class="chip timer-chip"><span class="chip-k">경과</span><b id="gameTimer" class="timer">00:00</b></div>
         <div class="chip asset-chip"><span class="chip-k">총자산</span><b id="myAssetTop">-</b></div>
+        <button id="marketStatusChip" class="chip status-chip" type="button" title="시장 상태 보기" aria-expanded="false">
+          <span class="status-dot" id="msDot"></span><b id="msLabel">상태</b>
+        </button>
       </div>
       <a id="navBoard" class="btn small" target="_blank" rel="noopener">주식소식</a>
       <a id="navWiki" class="btn small" target="_blank" rel="noopener">주식정보</a>
@@ -108,6 +111,7 @@
       <button id="btnLeaveGame" class="btn ghost small">나가기</button>
     </header>
 
+    <div id="marketStatusPanel" class="market-status-panel hidden"></div>
     <div id="newsBar" class="news-bar hidden"></div>
 
     <!-- 공모주 청약 패널 (청약 기간에만 표시) -->
@@ -157,11 +161,11 @@
         </div>
         <p id="selStockNews" class="news-line"></p>
         <div class="chart-periods" id="chartPeriods">
+          <button class="cp-btn" data-period="tick" type="button">1틱</button>
           <button class="cp-btn is-active" data-period="1d" type="button">1일</button>
+          <button class="cp-btn" data-period="3d" type="button">3일</button>
           <button class="cp-btn" data-period="1w" type="button">1주</button>
-          <button class="cp-btn" data-period="3m" type="button">3달</button>
-          <button class="cp-btn" data-period="1y" type="button">1년</button>
-          <button class="cp-btn" data-period="5y" type="button">5년</button>
+          <button class="cp-btn" data-period="1m" type="button">1달</button>
           <button class="cp-btn" data-period="all" type="button">전체</button>
         </div>
         <div class="chart-wrap"><canvas id="priceChart"></canvas><div id="chartTip" class="chart-tip hidden"></div></div>
