@@ -25,6 +25,7 @@ import * as game from "./game.js";
 import * as ui from "./ui.js";
 import * as site from "./siteConfig.js";
 import * as history from "./history.js";
+import { getEntryRoomCode, isLocalDev, showHomeGate, hideHomeGate } from "./homeGate.js";
 
 // 관리자 이메일 — 이 계정만 방을 만들고 없앨 수 있다
 // 관리자 — 이 Firebase UID(또는 이메일)만 방을 만들고 없앨 수 있다
@@ -35,12 +36,16 @@ const ADMIN_EMAIL = "tomem@naver.com";
 const state = {
   uid: null,
   email: null,
-  nickname: localStorage.getItem("mb_nickname") || "",
+  // 닉네임은 Home에서 설정한 값(stonk:lastNickname)도 fallback 으로 인정
+  nickname: localStorage.getItem("mb_nickname") || localStorage.getItem("stonk:lastNickname") || "",
   roomCode: null,
   roomData: null,
   selectedStockId: null,
-  tickTimer: null, // 방장 전용: 1초 시장 틱
-  liveState: history.createLiveState(), // 방장 전용: 라이브 1분 캔들 누적
+  tickTimer: null, // 시장 드라이버(현재 클라이언트가 드라이버일 때): 시장 틱
+  isDriver: false, // 현재 이 클라이언트가 시장 진행 드라이버인지
+  tickLeaseRenewAt: 0, // 드라이버 리스 마지막 갱신 시각
+  driverWatch: null, // 드라이버 페일오버 감시 타이머(방장 부재 감지)
+  liveState: history.createLiveState(), // 드라이버 전용: 라이브 1분 캔들 누적
   catchupDoneFor: null, // 이 방에서 catch-up 시도 완료 표시(중복 방지)
   clockTimer: null, // 남은 시간 표시용
   roomRef: null,
@@ -51,6 +56,14 @@ const state = {
   // 관리자 페이지 링크 노출 여부 (/admins/{uid}=true)
   isDbAdmin: false,
 };
+
+// ----- 시장 드라이버(failover) 설정 -----
+// 한 방의 시장 진행(틱)은 항상 "드라이버" 한 명만 수행한다(중복 쓰기 방지 = Firebase 사용량 유지).
+// 방장이 접속 중이면 방장이 드라이버. 방장이 나가면 리스(lease)가 만료되고
+// 접속 중인 다른 플레이어가 리스를 잡아 시장을 이어서 진행한다.
+const TICK_LEASE_TTL = 15000; // 리스 유효시간(ms) — 이 시간 갱신 없으면 다른 유저가 인수
+const TICK_LEASE_RENEW_MS = 5000; // 드라이버가 리스를 갱신하는 주기(ms)
+const DRIVER_WATCH_MS = 4000; // 방장 부재 감지 폴링 주기(ms, DB 쓰기 없음)
 
 // 방 진행 상태 분류 (status 필드 호환)
 const PLAYING_STATUSES = ["playing", "active", "running"];
@@ -93,6 +106,7 @@ function boot() {
   // (로그인되어 있으면 바로 진행, 아니면 로그인 화면 표시)
   onAuthStateChanged(auth, (user) => {
     if (user) {
+      hideHomeGate(); // 세션 복원 완료 → 게이트가 떠 있었다면 제거
       state.uid = user.uid;
       state.email = user.email || null;
       localStorage.setItem("mb_playerId", user.uid);
@@ -104,7 +118,16 @@ function boot() {
       state.isDbAdmin = false;
       const na = document.getElementById("navAdmin");
       if (na) na.hidden = true; // 로그아웃/미로그인 시 관리자 링크 숨김
-      ui.showScreen("screen-login");
+      // PHASE 3: 로그인은 STONK Home 중심. 직접 접속(미로그인)은 Home 으로 안내.
+      // 개발/로컬에서는 기존 자체 로그인 화면을 fallback 으로 유지한다.
+      if (isLocalDev()) {
+        ui.showScreen("screen-login");
+      } else {
+        showHomeGate({
+          message: "로그인은 STONK Home에서 진행합니다. Home에서 방을 선택해 입장해 주세요.",
+          roomCode: getEntryRoomCode(),
+        });
+      }
     }
   });
 }
@@ -175,6 +198,13 @@ async function afterLogin() {
     ui.showScreen("screen-auth");
     return;
   }
+  // PHASE 3: Home 에서 ?room= 으로 들어온 경우 그 방으로 바로 입장(Home 주도 진입).
+  const urlRoom = site.getUrlRoomCode();
+  if (urlRoom) {
+    goHome();              // 입장 처리 중/실패 시에도 빈 화면이 되지 않도록 홈 화면을 먼저 표시
+    await joinRoom(urlRoom); // 멤버면 재입장, 대기방이면 참여, 진행방이면 승인 요청
+    return;
+  }
   // 새로고침 대응: localStorage의 방 코드로 재접속 시도
   const savedRoom = localStorage.getItem("mb_roomCode");
   if (savedRoom) {
@@ -190,7 +220,12 @@ async function afterLogin() {
     }
     localStorage.removeItem("mb_roomCode");
   }
-  goHome();
+  // 방 컨텍스트가 전혀 없으면: 배포 환경은 Home 으로 안내, 개발 환경은 자체 홈(방 생성/입력) 표시
+  if (isLocalDev()) {
+    goHome();
+  } else {
+    showHomeGate({ message: "입장할 방이 없습니다. STONK Home에서 방을 선택해 주세요." });
+  }
 }
 
 function goHome() {
@@ -484,10 +519,12 @@ function onRoomUpdate(room) {
     document.getElementById("btnEndGame").classList.toggle("hidden", room.hostId !== state.uid);
     // 방 로드 시 1회: 사람이 없던 시간(경과)을 보정 (중복은 lock 으로 방지)
     void maybeCatchUp(room);
-    // 방장이면 시장 틱 구동 (새로고침 후 재접속해도 다시 시작됨)
-    if (room.hostId === state.uid) startTicking();
+    // 드라이버 결정: 방장 우선, 부재 시 접속 중인 다른 플레이어가 인수
+    void ensureMarketDriver(room);
+    startDriverWatch(); // DB 변화가 없어도 방장 부재를 감지하도록 폴링 시작
   } else if (room.status === "ended") {
-    stopTicking();
+    stopDriving();
+    stopDriverWatch();
     stopClock();
     ui.destroyChart();
     ui.showScreen("screen-result");
@@ -500,8 +537,9 @@ function onRoomUpdate(room) {
 // needsCatchup 일 때만, 방당 1회 시도. lock 으로 다중 접속 중복 보정 방지.
 async function maybeCatchUp(room) {
   if (!room || room.status !== "playing") return;
-  // 보정 쓰기 권한은 방장 또는 관리자만(DB 규칙). 일반 플레이어는 읽기만 — 방장이 보정한다.
-  if (room.hostId !== state.uid && !state.isDbAdmin && !isAdmin()) return;
+  // 규칙 완화(1.4.x failover): 같은 방의 인증 유저 누구나 보정 가능.
+  // 동시 다중 보정은 history.runCatchUp 내부의 catchupLock 트랜잭션으로 1명만 수행된다.
+  if (!state.uid) return;
   if (state.catchupDoneFor === state.roomCode) return;
   if (!history.needsCatchup(room)) { state.catchupDoneFor = state.roomCode; return; }
   state.catchupDoneFor = state.roomCode; // 시도 표시(반복 호출 방지)
@@ -516,13 +554,70 @@ async function maybeCatchUp(room) {
   }
 }
 
-// ----- 방장 전용: 시장 틱 (game.TICK_MS 간격) -----
-function startTicking() {
+// ===== 시장 드라이버 페일오버 =====
+// 리스(market/tickLease) 트랜잭션으로 항상 한 명만 드라이버가 되도록 보장한다.
+// - 방장이 접속 중이면 방장이 드라이버를 유지(다른 유저는 양보).
+// - 방장이 나가면 TICK_LEASE_TTL 후 리스가 만료되고, 접속 중인 다른 플레이어가 인수한다.
+
+// 리스 획득/갱신 트랜잭션 — 유효한 타인의 리스가 있으면 중단(false).
+async function acquireTickLease() {
+  if (!state.roomCode || !state.uid) return false;
+  const now = Date.now();
+  try {
+    const res = await runTransaction(
+      ref(db, `rooms/${state.roomCode}/market/tickLease`),
+      (cur) => {
+        if (cur && cur.by !== state.uid && (cur.expiresAt || 0) > now) return; // 타인이 유효 리스 보유 → 중단
+        return { by: state.uid, at: now, expiresAt: now + TICK_LEASE_TTL };
+      }
+    );
+    return res.committed;
+  } catch (e) {
+    return false;
+  }
+}
+
+// 방 상태에 따라 드라이버 여부를 결정한다(폴링/방 업데이트 양쪽에서 호출).
+async function ensureMarketDriver(room) {
+  room = room || state.roomData;
+  if (!room || room.status !== "playing") { stopDriving(); return; }
+  if (!state.uid) return;
+
+  const now = Date.now();
+  const lease = room.market && room.market.tickLease;
+  const leaseValidByOther = lease && lease.by !== state.uid && (lease.expiresAt || 0) > now;
+
+  // 이미 내가 드라이버면 유지(틱 루프가 리스를 갱신). 타인이 유효 리스를 잡았으면 양보.
+  if (state.isDriver) {
+    if (leaseValidByOther) stopDriving();
+    return;
+  }
+
+  const iAmHost = room.hostId === state.uid;
+  const hostConnected = room.hostId && room.players?.[room.hostId]?.connected !== false;
+
+  if (leaseValidByOther) return;            // 다른 드라이버가 진행 중 → 대기
+  if (!iAmHost && hostConnected) return;    // 방장이 접속 중 → 방장에게 양보
+
+  // 드라이버 공석: 리스를 시도해 잡으면 내가 진행한다.
+  const got = await acquireTickLease();
+  if (got) startDriving();
+}
+
+function startDriving() {
   if (state.tickTimer) return;
+  state.isDriver = true;
+  state.tickLeaseRenewAt = Date.now();
   state.tickTimer = setInterval(async () => {
     const room = state.roomData;
-    if (!room || room.status !== "playing") return;
+    if (!room || room.status !== "playing") { stopDriving(); return; }
     try {
+      // 리스 갱신 주기 도래 시: 갱신 실패(타인이 인수)하면 드라이버 중단
+      if (Date.now() - state.tickLeaseRenewAt >= TICK_LEASE_RENEW_MS) {
+        const ok = await acquireTickLease();
+        if (!ok) { stopDriving(); return; }
+        state.tickLeaseRenewAt = Date.now();
+      }
       // 시간 제한 없음 — 방장이 직접 종료할 때까지 계속 진행
       await game.marketTick(state.roomCode, room);
       // 공모주 청약 진행/마감/상장 처리
@@ -537,10 +632,36 @@ function startTicking() {
   }, game.TICK_MS);
 }
 
-function stopTicking() {
+function stopDriving() {
   if (state.tickTimer) {
     clearInterval(state.tickTimer);
     state.tickTimer = null;
+  }
+  state.isDriver = false;
+}
+
+// 내가 보유한 리스만 비운다(타인 리스는 건드리지 않음). 떠날 때 빠른 인수 유도.
+async function releaseTickLeaseIfMine() {
+  if (!state.roomCode || !state.uid) return;
+  const code = state.roomCode;
+  try {
+    await runTransaction(ref(db, `rooms/${code}/market/tickLease`), (cur) => {
+      if (cur && cur.by === state.uid) return null; // 내 리스만 해제
+      return cur; // 타인/공석은 그대로
+    });
+  } catch (e) {}
+}
+
+// 방장 부재를 DB 변화 없이도 감지하기 위한 폴링(쓰기 없음 — 공석일 때만 리스 시도).
+function startDriverWatch() {
+  if (state.driverWatch) return;
+  state.driverWatch = setInterval(() => { void ensureMarketDriver(state.roomData); }, DRIVER_WATCH_MS);
+}
+
+function stopDriverWatch() {
+  if (state.driverWatch) {
+    clearInterval(state.driverWatch);
+    state.driverWatch = null;
   }
 }
 
@@ -582,7 +703,9 @@ async function leaveRoom() {
 }
 
 function leaveToHome(msg) {
-  stopTicking();
+  releaseTickLeaseIfMine(); // 내가 드라이버였다면 리스를 즉시 비워 다른 유저가 바로 인수
+  stopDriving();
+  stopDriverWatch();
   stopClock();
   stopWatchingJoinRequest();
   ui.destroyChart();
@@ -842,7 +965,7 @@ function bindEvents() {
   document.getElementById("btnEndGame").addEventListener("click", async () => {
     if (!confirm("게임을 종료하고 최종 순위를 발표할까요?")) return;
     try {
-      stopTicking();
+      stopDriving();
       await game.endGame(state.roomCode, state.roomData);
     } catch (e) {
       ui.showToast("종료 실패: " + e.message, "err");
