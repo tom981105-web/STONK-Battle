@@ -26,6 +26,7 @@ import * as ui from "./ui.js";
 import * as site from "./siteConfig.js";
 import * as history from "./history.js";
 import { getEntryRoomCode, isLocalDev, showHomeGate, hideHomeGate } from "./homeGate.js";
+import { applyEquippedBackground } from "./equip.js";
 
 // 관리자 이메일 — 이 계정만 방을 만들고 없앨 수 있다
 // 관리자 — 이 Firebase UID(또는 이메일)만 방을 만들고 없앨 수 있다
@@ -501,6 +502,9 @@ function onRoomUpdate(room) {
     return;
   }
   state.roomData = room;
+
+  // 착용한 배경화면(스킨) 적용: rooms/{code}/players/{uid}/equippedBackground
+  applyEquippedBackground(room.players && state.uid && room.players[state.uid] ? room.players[state.uid].equippedBackground : null);
 
   if (room.status === "waiting") {
     ui.showScreen("screen-lobby");
