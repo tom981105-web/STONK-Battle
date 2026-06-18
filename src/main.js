@@ -558,6 +558,43 @@ function scheduleRender() {
   });
 }
 
+// ===== 테마(라이트 기본 + 다크 토글) =====
+function applyTheme(t) {
+  const theme = t === "dark" ? "dark" : "light";
+  document.documentElement.dataset.theme = theme;
+  try { localStorage.setItem("stonk:theme", theme); } catch (e) {}
+  const b = document.getElementById("themeToggle");
+  if (b) b.textContent = theme === "dark" ? "☀️" : "🌙";
+}
+function initTheme() {
+  let t = "light";
+  try { t = localStorage.getItem("stonk:theme") || "light"; } catch (e) {}
+  applyTheme(t);
+}
+function toggleTheme() {
+  applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
+}
+
+// ===== 토스 탭 라우팅 =====
+function setTab(name) {
+  const sg = document.getElementById("screen-game");
+  if (!sg) return;
+  sg.dataset.tab = name;
+  document.querySelectorAll(".tnav-tab").forEach((t) => t.classList.toggle("is-active", t.dataset.tab === name));
+  document.querySelectorAll(".tab-view").forEach((v) => v.classList.toggle("hidden", v.dataset.view !== name));
+  if (name === "detail") ui.destroyChart(); // 상세 진입 시 캔버스 재그리기 강제(가시화 후 정확한 크기로)
+  if (state.roomData) scheduleRender();
+}
+
+// 종목 선택 → 상세 탭 진입 (홈/스크리너 행 클릭 공통)
+function selectStock(id) {
+  if (!id) return;
+  state.selectedStockId = id;
+  subscribeSelectedHistory(id); // 선택 종목 history 로 구독 전환
+  prefillOrderPrices(id);
+  setTab("detail");
+}
+
 // ----- 방 데이터 변경 시 화면 갱신 -----
 function onRoomUpdate(room) {
   if (!room) {
@@ -1053,7 +1090,8 @@ function bindEvents() {
   });
 
   // 게임: 종목 선택 (이벤트 위임) — 별 토글은 별도 처리
-  document.getElementById("stockList").addEventListener("click", (e) => {
+  // 홈 랭킹표 + 스크리너 표: 관심 토글 / 행 클릭 → 종목 상세
+  const onTableClick = (e) => {
     const star = e.target.closest("[data-star]");
     if (star) {
       e.stopPropagation();
@@ -1061,12 +1099,76 @@ function bindEvents() {
       scheduleRender();
       return;
     }
-    const item = e.target.closest(".stock-item");
+    const item = e.target.closest(".rank-item");
     if (!item) return;
-    state.selectedStockId = item.dataset.id;
-    subscribeSelectedHistory(item.dataset.id); // 선택 종목 history 로 구독 전환
-    prefillOrderPrices(item.dataset.id);
+    selectStock(item.dataset.id);
+  };
+  document.getElementById("stockList")?.addEventListener("click", onTableClick);
+  document.getElementById("screenerList")?.addEventListener("click", onTableClick);
+
+  // ===== 토스 셸: 탭/검색/테마/툴바/상세 네비 =====
+  initTheme();
+  document.getElementById("themeToggle")?.addEventListener("click", toggleTheme);
+  document.querySelector(".tnav-brand")?.addEventListener("click", () => setTab("home"));
+  document.getElementById("tnavTabs")?.addEventListener("click", (e) => {
+    const t = e.target.closest(".tnav-tab");
+    if (t) setTab(t.dataset.tab);
+  });
+  document.getElementById("btnDetailBack")?.addEventListener("click", () => setTab("home"));
+
+  const gs = document.getElementById("globalSearch");
+  if (gs) {
+    gs.addEventListener("input", () => {
+      ui.setStockQuery(gs.value);
+      const sg = document.getElementById("screen-game");
+      if (sg && sg.dataset.tab !== "home") setTab("home");
+      scheduleRender();
+    });
+  }
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "/") return;
+    const a = document.activeElement;
+    if (a && /^(input|textarea|select)$/i.test(a.tagName)) return;
+    if (document.getElementById("screen-game")?.classList.contains("hidden")) return;
+    e.preventDefault();
+    gs?.focus();
+  });
+
+  document.getElementById("homeSeg")?.addEventListener("click", (e) => {
+    const b = e.target.closest(".seg-btn");
+    if (!b) return;
+    document.querySelectorAll("#homeSeg .seg-btn").forEach((x) => x.classList.toggle("is-active", x === b));
+    // '지금 뜨는 산업' = 등락률 상위로 정렬(가벼운 매핑)
+    ui.setHomeSort(b.dataset.home === "sectors" ? "up" : "value");
     scheduleRender();
+  });
+  document.getElementById("homeFilters")?.addEventListener("click", (e) => {
+    const b = e.target.closest(".fchip");
+    if (!b) return;
+    if (b.dataset.filter) {
+      document.querySelectorAll("#homeFilters [data-filter]").forEach((x) => x.classList.toggle("is-active", x === b));
+      ui.setHomeFilter(b.dataset.filter);
+    }
+    if (b.dataset.sort) {
+      document.querySelectorAll("#homeFilters [data-sort]").forEach((x) => x.classList.toggle("is-active", x === b));
+      ui.setHomeSort(b.dataset.sort);
+    }
+    scheduleRender();
+  });
+
+  document.getElementById("screenerPresets")?.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-preset]");
+    if (b) { ui.setScreenerPreset(b.dataset.preset); scheduleRender(); }
+  });
+  document.getElementById("accountView")?.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-acct]");
+    if (b) { ui.setAcctSection(b.dataset.acct); scheduleRender(); }
+  });
+  document.getElementById("feedView")?.addEventListener("click", (e) => {
+    if (e.target.closest("#feedBoardLink")) {
+      const nb = document.getElementById("navBoard");
+      if (nb && nb.href) window.open(nb.href, "_blank", "noopener");
+    }
   });
 
   // 게임: 수량 조절

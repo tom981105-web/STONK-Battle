@@ -149,6 +149,7 @@ function accumulateLocal(room, roomCode) {
     for (const b of feed) localBotLog.unshift({ ...b, bot: true });
     if (localBotLog.length > BOT_LOG_MAX) localBotLog.length = BOT_LOG_MAX;
     checkAlerts(stocks); // 가격 알림 점검
+    accumulateIndices(stocks); // 종합/섹터 지수 스파크라인용 히스토리 누적
     saveCandles(); // 차트 영속화
   }
 }
@@ -218,18 +219,40 @@ export function renderLobby(roomCode, room, myUid) {
 // ----- 게임 화면 렌더링 -----
 export function renderGame(state) {
   const { roomCode, roomData: room, uid, selectedStockId } = state;
-  $("gameRoomCode").textContent = roomCode;
-  accumulateLocal(room, roomCode);
-  renderStockList(room, selectedStockId);
-  renderStockDetail(room, selectedStockId);
-  renderOrderbook(room, selectedStockId);
-  renderPortfolio(room, uid);
+  const codeEl = $("gameRoomCode"); if (codeEl) codeEl.textContent = roomCode;
+  accumulateLocal(room, roomCode); // 로컬 캔들 + 지수 히스토리 누적
+  // 전역(모든 탭 공통)
+  renderAccountChip(room, uid);
+  renderPortfolio(room, uid);   // myAsset/myAssetTop/myCash/myPnl/holdings (레일+네비 자산)
   renderRanking(room, uid);
-  renderLogs(room);
   renderNewsBar(room);
   renderIpoPanel(room, uid);
-  renderOrders(room, uid);
   renderMarketStatus(state);
+  renderLogs(room);
+  // 활성 탭만 렌더(성능)
+  const tab = activeTab();
+  if (tab === "home") {
+    renderIndexStrip(room);
+    renderRankingTable(room, selectedStockId);
+  } else if (tab === "detail") {
+    renderStockDetail(room, selectedStockId);
+    renderOrderbook(room, selectedStockId);
+    renderOrders(room, uid);
+  } else if (tab === "feed") {
+    renderFeed(room, uid);
+  } else if (tab === "screener") {
+    renderScreener(room, selectedStockId);
+  } else if (tab === "account") {
+    renderAccount(room, uid);
+  }
+}
+
+// 상단 네비 계좌 칩(닉네임/아바타)
+function renderAccountChip(room, uid) {
+  const me = room.players?.[uid];
+  const nick = (me && me.nickname) || "나";
+  const nk = $("navNick"); if (nk) nk.textContent = nick;
+  const av = $("navAvatar"); if (av) av.textContent = (nick || "U").slice(0, 1).toUpperCase();
 }
 
 // ----- 시장/연결 상태 (작은 진단 UI) -----
@@ -342,6 +365,17 @@ function arrow(rate) {
 // 종목 검색어 (name/id/sector/type/role/badge 대상). main.js 가 setStockQuery 로 설정.
 let stockQuery = "";
 export function setStockQuery(q) { stockQuery = (q || "").trim().toLowerCase(); }
+
+// 토스 앱 탭/정렬/필터 상태 (main.js 핸들러가 set* 로 변경)
+let homeFilter = "all"; // all | watch
+let homeSort = "value"; // value | volume | up | down
+let screenerPreset = "rising";
+let acctSection = "asset"; // asset | tx | orders
+export function setHomeFilter(f) { homeFilter = f || "all"; }
+export function setHomeSort(s) { homeSort = s || "value"; }
+export function setScreenerPreset(p) { screenerPreset = p || "rising"; }
+export function setAcctSection(s) { acctSection = s || "asset"; }
+function activeTab() { return document.getElementById("screen-game")?.dataset.tab || "home"; }
 function matchStock(id, s) {
   if (!stockQuery) return true;
   const parts = [
@@ -352,42 +386,59 @@ function matchStock(id, s) {
   return parts.join(" ").toLowerCase().includes(stockQuery);
 }
 
-function renderStockList(room, selectedStockId) {
+// 종목별 결정적 발행주식수(시가총액 표기용) — 저장 필드가 없어 id 해시로 안정적으로 생성
+function impliedShares(id) {
+  let h = 0; const s = String(id);
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return 5_000_000 + (h % 60) * 8_000_000;
+}
+// 종목 이름 기반 안정적 아이콘 색
+function iconColor(name) {
+  let h = 0; const s = String(name || "");
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return `hsl(${h % 360} 60% 47%)`;
+}
+function sortEntries(entries, sort) {
+  const by = {
+    value: (a, b) => (b[1].value || 0) - (a[1].value || 0),
+    volume: (a, b) => (b[1].volume || 0) - (a[1].volume || 0),
+    up: (a, b) => (b[1].changeRate || 0) - (a[1].changeRate || 0),
+    down: (a, b) => (a[1].changeRate || 0) - (b[1].changeRate || 0),
+  };
+  return entries.sort(by[sort] || by.value);
+}
+// 토스식 랭킹 표 한 행
+function rankRowHtml(rank, id, s) {
+  const sign = s.changeRate > 0 ? "+" : "";
+  const cls = dirClass(s.changeRate);
+  const watched = watchSet.has(s.name);
+  const cap = s.price * impliedShares(id);
+  const sub = s.sector || typeLabel(s.type) || "종목";
+  return `<li class="rank-item" data-id="${id}">
+    <span class="rk-rank"><button class="star-btn ${watched ? "on" : ""}" data-star="${esc(s.name)}" title="관심">${watched ? "★" : "☆"}</button>${rank}</span>
+    <span class="rk-name"><span class="stk-ico" style="background:${iconColor(s.name)}">${esc((s.name || "?").slice(0, 1))}</span><span class="stk-meta"><span class="stk-nm">${esc(s.name)} ${stockBadge(id, s)}</span><span class="stk-sub">${esc(sub)}</span></span></span>
+    <span class="rk-price ${cls}">${fmtNum(s.price)}</span>
+    <span class="rk-rate ${cls}">${arrow(s.changeRate)} ${sign}${(s.changeRate ?? 0).toFixed(2)}%</span>
+    <span class="rk-value">${fmtMoneyShort(s.value)}</span>
+    <span class="rk-cap">${fmtMoneyShort(cap)}</span>
+    <span class="rk-sector"><span class="sec-pill">${esc(s.sector || "-")}</span></span>
+  </li>`;
+}
+// 홈 실시간 차트 랭킹 표(검색/필터/정렬 적용)
+function renderRankingTable(room) {
   const list = $("stockList");
+  if (!list) return;
+  const prev = list.scrollTop;
   const stocks = room.stocks || {};
-  const prevScroll = list.scrollTop; // 매 틱 재생성으로 스크롤이 튀지 않게 보존
-  list.innerHTML = "";
-  // 관심종목을 위로 정렬 + 검색어 필터
-  const entries = Object.entries(stocks)
-    .filter(([id, s]) => matchStock(id, s))
-    .sort((a, b) => {
-      const aw = watchSet.has(a[1].name) ? 0 : 1;
-      const bw = watchSet.has(b[1].name) ? 0 : 1;
-      return aw - bw;
-    });
+  let entries = Object.entries(stocks).filter(([id, s]) => matchStock(id, s));
+  if (homeFilter === "watch") entries = entries.filter(([, s]) => watchSet.has(s.name));
+  entries = sortEntries(entries, homeSort);
   if (!entries.length) {
-    const li = document.createElement("li");
-    li.className = "muted stock-empty";
-    li.textContent = stockQuery ? "검색 결과 없음" : "종목이 없습니다";
-    list.appendChild(li);
+    list.innerHTML = `<li class="stock-empty">${stockQuery ? "검색 결과 없음" : "종목이 없습니다"}</li>`;
     return;
   }
-  entries.forEach(([id, s]) => {
-    const li = document.createElement("li");
-    li.className = "stock-item" + (id === selectedStockId ? " selected" : "");
-    li.dataset.id = id;
-    const sign = s.changeRate > 0 ? "+" : "";
-    const cls = dirClass(s.changeRate);
-    const watched = watchSet.has(s.name);
-    li.innerHTML = `
-      <div class="stock-name"><button class="star-btn ${watched ? "on" : ""}" data-star="${esc(s.name)}" title="관심종목">${watched ? "★" : "☆"}</button>${esc(s.name)} ${stockBadge(id, s)}</div>
-      <div class="stock-price ${cls}">${fmtNum(s.price)}</div>
-      <div class="stock-rate ${cls}">${arrow(s.changeRate)} ${sign}${(s.changeRate ?? 0).toFixed(2)}%</div>
-      <div class="stock-vol muted">${fmtMoneyShort(s.value)}</div>
-    `;
-    list.appendChild(li);
-  });
-  list.scrollTop = prevScroll; // 스크롤 위치 복원
+  list.innerHTML = entries.map(([id, s], i) => rankRowHtml(i + 1, id, s)).join("");
+  list.scrollTop = prev;
 }
 
 // 종목 상세: 현재가/전일대비/등락률 + 시고저 + 거래량/거래대금 + 캔들차트
@@ -998,18 +1049,21 @@ function renderNewsBar(room) {
 
 // ----- 4초 tick 체감 개선: 다음 변동까지 진행바 + 카운트다운 (tick 간격은 그대로) -----
 export function updateTickProgress(room) {
-  const bar = $("tickBar");
-  const cd = $("tickCountdown");
-  if (!bar) return;
+  const bars = [$("tickBar"), $("tickBarHome")];
+  const cds = [$("tickCountdown"), $("tickCountdownHome")];
   const lastTick = (room && (room.marketTick || (room.market && room.market.lastTickAt))) || 0;
-  if (!lastTick) { bar.style.width = "0%"; if (cd) cd.textContent = ""; return; }
+  if (!lastTick) {
+    bars.forEach((b) => { if (b) b.style.width = "0%"; });
+    cds.forEach((c) => { if (c) c.textContent = ""; });
+    return;
+  }
   const since = Date.now() - lastTick;
   const frac = Math.max(0, Math.min(1, since / TICK_MS));
-  bar.style.width = (frac * 100).toFixed(1) + "%";
-  if (cd) {
-    const left = Math.max(0, Math.ceil((TICK_MS - since) / 1000));
-    cd.textContent = left > 0 ? left + "s" : "곧";
-  }
+  const w = (frac * 100).toFixed(1) + "%";
+  bars.forEach((b) => { if (b) b.style.width = w; });
+  const left = Math.max(0, Math.ceil((TICK_MS - since) / 1000));
+  const t = left > 0 ? left + "s" : "곧";
+  cds.forEach((c) => { if (c) c.textContent = t; });
 }
 
 // ----- 경과 시간 표시 (카운트업) -----
@@ -1043,4 +1097,178 @@ function esc(str) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+/* ===================== 토스 탭: 지수 스트립 ===================== */
+let indexHistory = {}; // key -> number[] (스파크라인용 링버퍼)
+const INDEX_MAX = 60;
+function computeIndices(stocks) {
+  let wSum = 0, rSum = 0;
+  const sec = {};
+  for (const s of Object.values(stocks || {})) {
+    const w = (s.value || 0) + 1;
+    wSum += w; rSum += w * (s.changeRate || 0);
+    const k = s.sector || "기타";
+    const e = sec[k] || (sec[k] = { w: 0, r: 0 });
+    e.w += w; e.r += w * (s.changeRate || 0);
+  }
+  const comp = wSum ? rSum / wSum : 0;
+  const sectors = Object.entries(sec)
+    .map(([name, v]) => ({ name, rate: v.w ? v.r / v.w : 0, w: v.w }))
+    .sort((a, b) => b.w - a.w);
+  return { comp, sectors };
+}
+function pushIndex(key, val) {
+  const a = indexHistory[key] || (indexHistory[key] = []);
+  a.push(val);
+  if (a.length > INDEX_MAX) a.shift();
+}
+function accumulateIndices(stocks) {
+  const { comp, sectors } = computeIndices(stocks);
+  pushIndex("__comp__", 1000 * (1 + comp / 100));
+  sectors.forEach((s) => pushIndex("sec:" + s.name, 1000 * (1 + s.rate / 100)));
+}
+function sparkSvg(arr, rate) {
+  if (!arr || arr.length < 2) return "";
+  const w = 140, h = 28;
+  const min = Math.min(...arr), max = Math.max(...arr), rng = (max - min) || 1;
+  const pts = arr.map((v, i) => `${(i / (arr.length - 1) * w).toFixed(1)},${(h - ((v - min) / rng) * h).toFixed(1)}`).join(" ");
+  const col = rate >= 0 ? "var(--up)" : "var(--down)";
+  return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><polyline points="${pts}" fill="none" stroke="${col}" stroke-width="1.6" stroke-linejoin="round"/></svg>`;
+}
+function indexCardHtml(name, val, rate, hist) {
+  const cls = dirClass(rate), sign = rate > 0 ? "+" : "";
+  return `<div class="index-card"><span class="ix-name">${esc(name)}</span><span class="ix-val">${val.toFixed(2)}</span><span class="ix-rate ${cls}">${arrow(rate)} ${sign}${rate.toFixed(2)}%</span><div class="ix-spark">${sparkSvg(hist, rate)}</div></div>`;
+}
+function renderIndexStrip(room) {
+  const el = $("indexStrip");
+  if (!el) return;
+  const { comp, sectors } = computeIndices(room.stocks || {});
+  const cards = [indexCardHtml("STONK 종합", 1000 * (1 + comp / 100), comp, indexHistory["__comp__"])];
+  sectors.slice(0, 6).forEach((s) => cards.push(indexCardHtml(s.name, 1000 * (1 + s.rate / 100), s.rate, indexHistory["sec:" + s.name])));
+  el.innerHTML = cards.join("");
+}
+
+/* ===================== 토스 탭: 피드 ===================== */
+function feedCardHtml(p) {
+  const ago = new Date(p.when).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
+  return `<div class="feed-card"><div class="feed-card-head"><span class="feed-ava">${esc((p.who || "S").slice(0, 1))}</span><div><div class="feed-who">${esc(p.who)}</div><div class="feed-when">${ago}</div></div></div>${p.title ? `<div class="feed-title">${esc(p.title)}</div>` : ""}<div class="feed-body">${esc(p.body)}</div></div>`;
+}
+function renderFeed(room, uid) {
+  const el = $("feedView");
+  if (!el) return;
+  const posts = [];
+  const ln = room.latestNews;
+  if (ln && (ln.text || ln.title)) posts.push({ who: "STONK 뉴스", when: ln.time || Date.now(), title: ln.title || "📢 시장 속보", body: ln.text || ln.body || "" });
+  Object.values(room.botFeed || {}).slice(-10).reverse().forEach((b) =>
+    posts.push({ who: b.nickname || "트레이더", when: b.time || Date.now(), title: "", body: `${b.type === "buy" ? "매수" : "매도"} · ${b.stockName || "종목"} ${fmtNum(b.qty || 0)}주 @ ${fmtNum(b.price || 0)}` }));
+  const ranking = calcRanking(room.players, room.stocks).slice(0, 5);
+  const sectors = [...new Set(Object.values(room.stocks || {}).map((s) => s.sector).filter(Boolean))].slice(0, 8);
+  const rankLi = ranking.map((r, i) => {
+    const pct = ((r.total - START_CASH) / START_CASH) * 100;
+    return `<li><span class="fr-no">${i + 1}</span><span class="fr-name">${esc(r.nickname)}</span><span class="fr-val ${pct >= 0 ? "up" : "down"}">${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%</span></li>`;
+  }).join("");
+  el.innerHTML = `
+    <aside class="feed-side"><button class="is-active">전체</button><button>팔로잉</button><button>뉴스</button></aside>
+    <div class="feed-main">
+      ${posts.length ? posts.map(feedCardHtml).join("") : `<div class="feed-card"><div class="feed-body muted">아직 소식이 없습니다. 거래가 시작되면 시장 속보와 체결 소식이 올라옵니다.</div></div>`}
+      <a class="feed-card" id="feedBoardLink" target="_blank" rel="noopener" style="text-decoration:none;color:var(--brand);font-weight:700">전체 소식 보기 → STONK Board ↗</a>
+    </div>
+    <aside class="feed-aside">
+      <div class="feed-rank-card"><h4 class="rail-h">주간 프로필 랭킹</h4><ol class="feed-rank-list">${rankLi || '<li class="muted">참가자 없음</li>'}</ol></div>
+      <div class="feed-rank-card"><h4 class="rail-h">주제별 커뮤니티</h4><div class="feed-comm">${sectors.map((s) => `<span>＃ ${esc(s)}</span>`).join("") || '<span class="muted">-</span>'}</div></div>
+    </aside>`;
+}
+
+/* ===================== 토스 탭: 주식 골라보기(스크리너) ===================== */
+const SCREENER_PRESETS = [
+  { key: "rising", label: "연속 상승세", badge: "인기", fn: (id, s) => (s.changeRate || 0) > 0, sort: "up" },
+  { key: "value", label: "거래대금 상위", fn: () => true, sort: "value" },
+  { key: "surge", label: "급등주", fn: (id, s) => (s.changeRate || 0) >= 5, sort: "up" },
+  { key: "plunge", label: "급락주", fn: (id, s) => (s.changeRate || 0) <= -5, sort: "down" },
+  { key: "cheap", label: "저가주", fn: (id, s) => (s.price || 0) < 2000, sort: "value" },
+  { key: "pricey", label: "고가주", fn: (id, s) => (s.price || 0) >= 100000, sort: "value" },
+  { key: "lev", label: "레버리지·인버스", fn: (id, s) => s.type === "leverage" || s.type === "inverse", sort: "value" },
+  { key: "etf", label: "ETF·리츠", fn: (id, s) => s.type === "etf" || s.type === "reit", sort: "value" },
+  { key: "leader", label: "대장주", fn: (id, s) => s.role === "leader", sort: "value" },
+];
+function renderScreener(room) {
+  const presetEl = $("screenerPresets"), headEl = $("screenerHead"), listEl = $("screenerList");
+  if (!presetEl || !listEl) return;
+  presetEl.innerHTML = `<div class="sa-title">주식 골라보기 목록</div>` +
+    SCREENER_PRESETS.map((p) => `<button data-preset="${p.key}" class="${p.key === screenerPreset ? "is-active" : ""}">${esc(p.label)}${p.badge ? ` <span class="sa-badge">${p.badge}</span>` : ""}</button>`).join("");
+  const preset = SCREENER_PRESETS.find((p) => p.key === screenerPreset) || SCREENER_PRESETS[0];
+  if (headEl) headEl.innerHTML = `<h2>${esc(preset.label)}</h2><p>조건에 맞는 종목을 모았습니다 · 모두 가상 데이터</p>`;
+  let entries = Object.entries(room.stocks || {}).filter(([id, s]) => preset.fn(id, s));
+  entries = sortEntries(entries, preset.sort);
+  listEl.innerHTML = entries.length
+    ? entries.map(([id, s], i) => rankRowHtml(i + 1, id, s)).join("")
+    : `<li class="stock-empty">조건에 맞는 종목이 없습니다</li>`;
+}
+
+/* ===================== 토스 탭: 내 계좌 ===================== */
+function renderAccount(room, uid) {
+  const el = $("accountView");
+  if (!el) return;
+  const me = room.players?.[uid];
+  if (!me) { el.innerHTML = `<div class="acct-main"><div class="acct-section muted">계좌 정보를 불러오는 중…</div></div>`; return; }
+  const stocks = room.stocks || {};
+  const total = calcTotalAsset(me, stocks);
+  const avgCost = me.avgCost || {};
+  const holdings = Object.entries(me.holdings || {}).filter(([, q]) => q > 0);
+  let invest = 0, pl = 0, cost = 0;
+  holdings.forEach(([sid, q]) => {
+    const s = stocks[sid]; if (!s) return;
+    const c = (avgCost[sid] || s.price) * q;
+    invest += s.price * q; pl += s.price * q - c; cost += c;
+  });
+  const plPct = cost ? pl / cost * 100 : 0;
+  const plCls = pl > 0 ? "up" : pl < 0 ? "down" : "flat";
+  const code = $("gameRoomCode")?.textContent || "-";
+  const myLogs = Object.values(room.logs || {}).filter((l) => l.uid === uid).sort((a, b) => b.time - a.time).slice(0, 20);
+  const myOrders = Object.values(room.orders || {}).filter((o) => o.uid === uid);
+
+  const side = ["asset", "tx", "orders"].map((k) => {
+    const label = { asset: "자산", tx: "거래내역", orders: "주문내역" }[k];
+    return `<button data-acct="${k}" class="${k === acctSection ? "is-active" : ""}">${label}</button>`;
+  }).join("");
+
+  let main = "";
+  if (acctSection === "asset") {
+    const holdRows = holdings.length ? holdings.map(([sid, q]) => {
+      const s = stocks[sid]; if (!s) return "";
+      const avg = avgCost[sid] || 0;
+      const p = avg ? (s.price - avg) * q : 0;
+      const pp = avg ? (s.price - avg) / avg * 100 : 0;
+      const c = p > 0 ? "up" : p < 0 ? "down" : "flat";
+      return `<div class="acct-row"><div><div class="ar-name">${esc(s.name)}</div><div class="ar-sub">${fmtNum(q)}주 · 평단 ${avg ? fmtNum(avg) : "-"}</div></div><div class="ar-val ${c}">${fmtNum(s.price * q)}원<br><small>${p >= 0 ? "+" : ""}${pp.toFixed(2)}%</small></div></div>`;
+    }).join("") : `<div class="acct-row muted">보유 종목이 없습니다</div>`;
+    main = `
+      <div class="acct-hero">
+        <div class="ah-no">기본계좌 · ${esc(code)}</div>
+        <div class="ah-asset">${fmt(total)}</div>
+        <div class="ah-pnl ${plCls}">평가손익 ${pl >= 0 ? "+" : ""}${fmtNum(pl)}원 (${plPct >= 0 ? "+" : ""}${plPct.toFixed(2)}%)</div>
+        <div class="acct-actions"><button class="btn small" disabled>채우기</button><button class="btn small" disabled>보내기</button><button class="btn small" disabled>환전</button></div>
+      </div>
+      <div class="acct-grid">
+        <div class="acct-stat"><div class="as-k">주문가능 현금</div><div class="as-v">${fmt(me.cash)}</div></div>
+        <div class="acct-stat"><div class="as-k">총 투자금액(평가)</div><div class="as-v">${fmt(invest)}</div></div>
+        <div class="acct-stat"><div class="as-k">평가손익</div><div class="as-v ${plCls}">${pl >= 0 ? "+" : ""}${fmtNum(pl)}</div></div>
+      </div>
+      <div class="acct-section"><h3>보유 종목</h3>${holdRows}</div>`;
+  } else if (acctSection === "tx") {
+    const rows = myLogs.length ? myLogs.map((l) => {
+      const c = l.type === "buy" ? "up" : "down";
+      const t = new Date(l.time).toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+      return `<div class="acct-row"><div><div class="ar-name">${esc(l.stockName)}</div><div class="ar-sub">${t}</div></div><div class="ar-val ${c}">${l.type === "buy" ? "매수" : "매도"} ${fmtNum(l.qty)}주<br><small>@ ${fmtNum(l.price)}</small></div></div>`;
+    }).join("") : `<div class="acct-row muted">거래내역이 없습니다</div>`;
+    main = `<div class="acct-section"><h3>거래내역</h3>${rows}</div>`;
+  } else {
+    const rows = myOrders.length ? myOrders.map((o) => {
+      const c = o.side === "buy" ? "up" : "down";
+      return `<div class="acct-row"><div><div class="ar-name">${esc(o.stockName || o.stockId || "")}</div><div class="ar-sub">${o.kind || "지정가"} · ${o.tif || ""}</div></div><div class="ar-val ${c}">${o.side === "buy" ? "매수" : "매도"} ${fmtNum(o.qty)}주<br><small>${o.price ? "@ " + fmtNum(o.price) : ""}</small></div></div>`;
+    }).join("") : `<div class="acct-row muted">미체결 주문이 없습니다</div>`;
+    main = `<div class="acct-section"><h3>주문내역(미체결)</h3>${rows}</div>`;
+  }
+  el.innerHTML = `<aside class="acct-side">${side}</aside><div class="acct-main">${main}</div>`;
 }
