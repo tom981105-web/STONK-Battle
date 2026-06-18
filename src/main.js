@@ -1,6 +1,6 @@
 // src/main.js - 앱 진입점 (인증, 방 관리, 실시간 동기화, 이벤트 바인딩)
-import "./style.css";
-import "./stonk-ui.css"; // STONK 공용 디자인 시스템(토큰·폴리시) — style.css 뒤에서 토큰 덮어쓰기
+import "./stonk-ui.css"; // STONK 공용 폴리시(폰트·포커스·모션) — 먼저 로드
+import "./style.css"; // 토스 다크 테마 — 뒤에서 로드해 토큰(색/표면/모서리)의 최종 권한을 가짐
 import { auth, db, isConfigured } from "./firebase.js";
 import {
   signInWithEmailAndPassword,

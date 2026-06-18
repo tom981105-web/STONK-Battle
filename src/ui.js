@@ -679,7 +679,7 @@ function renderCandles(canvas, candles, basePrice, hoverIndex) {
 
   const up = getCSS("--up");
   const down = getCSS("--down");
-  const grid = "rgba(20,28,46,0.06)";
+  const grid = "rgba(255,255,255,0.07)"; // 다크 테마: 밝은 반투명 그리드
   const axisText = getCSS("--muted") || "#999";
   const yP = (p) => priceH * (1 - (p - lo) / (hi - lo));
 

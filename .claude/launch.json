@@ -5,7 +5,7 @@
       "name": "market-battle",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
-      "cwd": "F:\\claude\\주식\\market-battle",
+      "cwd": "C:\\Users\\내곡시설\\Desktop\\주\\Market-battle",
       "port": 5173
     }
   ]
