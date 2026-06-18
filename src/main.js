@@ -589,10 +589,48 @@ function setTab(name) {
 // 종목 선택 → 상세 탭 진입 (홈/스크리너 행 클릭 공통)
 function selectStock(id) {
   if (!id) return;
+  ui.hideHoverCard();
   state.selectedStockId = id;
   subscribeSelectedHistory(id); // 선택 종목 history 로 구독 전환
   prefillOrderPrices(id);
   setTab("detail");
+}
+
+// 종목 행 호버 미리보기(클릭→상세는 그대로, 호버 시 미니 차트 팝업)
+let hoverTimer = null, hoverShownId = null;
+function positionHoverCard(rect) {
+  const el = document.getElementById("stockHover");
+  if (!el) return;
+  const w = el.offsetWidth || 300, h = el.offsetHeight || 240;
+  let left = rect.right + 12;
+  if (left + w > window.innerWidth - 8) left = rect.left - w - 12;
+  if (left < 8) left = 8;
+  let top = rect.top;
+  if (top + h > window.innerHeight - 8) top = window.innerHeight - h - 8;
+  if (top < 8) top = 8;
+  el.style.left = left + "px";
+  el.style.top = top + "px";
+}
+function bindHoverPreview(listId) {
+  const list = document.getElementById(listId);
+  if (!list) return;
+  list.addEventListener("mouseover", (e) => {
+    const item = e.target.closest(".rank-item");
+    if (!item || !state.roomData) return;
+    const id = item.dataset.id;
+    if (id === hoverShownId) return;
+    clearTimeout(hoverTimer);
+    hoverTimer = setTimeout(() => {
+      hoverShownId = id;
+      ui.renderHoverCard(state.roomData, id);
+      positionHoverCard(item.getBoundingClientRect());
+    }, 90);
+  });
+  list.addEventListener("mouseleave", () => {
+    clearTimeout(hoverTimer);
+    hoverShownId = null;
+    ui.hideHoverCard();
+  });
 }
 
 // ----- 방 데이터 변경 시 화면 갱신 -----
@@ -1105,6 +1143,10 @@ function bindEvents() {
   };
   document.getElementById("stockList")?.addEventListener("click", onTableClick);
   document.getElementById("screenerList")?.addEventListener("click", onTableClick);
+  // 행 호버 시 미니 차트 미리보기(클릭→상세 기능은 그대로 유지)
+  bindHoverPreview("stockList");
+  bindHoverPreview("screenerList");
+  window.addEventListener("scroll", () => { hoverShownId = null; ui.hideHoverCard(); }, true);
 
   // ===== 토스 셸: 탭/검색/테마/툴바/상세 네비 =====
   initTheme();

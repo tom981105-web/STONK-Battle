@@ -1272,3 +1272,69 @@ function renderAccount(room, uid) {
   }
   el.innerHTML = `<aside class="acct-side">${side}</aside><div class="acct-main">${main}</div>`;
 }
+
+/* ===================== 종목 호버 미리보기 (토스식 미니차트 팝업) ===================== */
+export function hideHoverCard() {
+  const el = $("stockHover");
+  if (el) el.classList.add("hidden");
+}
+export function renderHoverCard(room, id) {
+  const el = $("stockHover");
+  if (!el) return;
+  const s = room && room.stocks && room.stocks[id];
+  if (!s) { el.classList.add("hidden"); return; }
+  const cls = dirClass(s.changeRate);
+  const sign = s.changeRate > 0 ? "+" : "";
+  const why = (s.changeRate || 0) >= 0 ? "왜 올랐을까?" : "왜 내렸을까?";
+  const news = s.news ? esc(s.news) : "아직 특별한 소식은 없어요. 거래대금과 수급에 따라 움직이고 있어요.";
+  el.innerHTML = `
+    <div class="sh-head">
+      <span class="sh-ico" style="background:${iconColor(s.name)}">${esc((s.name || "?").slice(0, 1))}</span>
+      <div class="sh-meta">
+        <b class="sh-name">${esc(s.name)} ${stockBadge(id, s)}</b>
+        <span class="sh-price"><b>${fmtNum(s.price)}원</b> <span class="${cls}">${arrow(s.changeRate)} ${sign}${(s.changeRate ?? 0).toFixed(2)}%</span></span>
+      </div>
+    </div>
+    <div class="sh-chartwrap"><span class="sh-tf">일봉</span><canvas class="sh-chart"></canvas></div>
+    <div class="sh-news"><b class="sh-why">${why}</b><p>${news}</p></div>`;
+  el.classList.remove("hidden");
+  const canvas = el.querySelector(".sh-chart");
+  const base = s.basePrice || s.previousPrice || s.price;
+  drawMiniCandles(canvas, buildSeries(s, id, "1d"), base);
+}
+// 미니 캔들+거래량 (공용 차트 상태 chartGeom/lastChartSig 등은 건드리지 않음)
+function drawMiniCandles(canvas, candles, base) {
+  if (!canvas) return;
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = canvas.clientWidth || 272, cssH = canvas.clientHeight || 118;
+  canvas.width = Math.round(cssW * dpr); canvas.height = Math.round(cssH * dpr);
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssW, cssH);
+  if (!candles || candles.length < 2) {
+    ctx.fillStyle = getCSS("--muted"); ctx.font = "12px Pretendard, sans-serif";
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText("데이터 수집 중…", cssW / 2, cssH / 2);
+    return;
+  }
+  const priceH = cssH * 0.72, volH = cssH - priceH - 4;
+  let hi = -Infinity, lo = Infinity, maxV = 0;
+  for (const c of candles) { hi = Math.max(hi, c.h); lo = Math.min(lo, c.l); maxV = Math.max(maxV, c.v || 0); }
+  if (hi === lo) { hi += 1; lo -= 1; }
+  const pad = (hi - lo) * 0.12; hi += pad; lo -= pad;
+  const yP = (p) => priceH * (1 - (p - lo) / (hi - lo));
+  ctx.strokeStyle = getCSS("--chart-grid") || "rgba(0,0,0,.06)";
+  ctx.lineWidth = 1;
+  for (let i = 1; i <= 2; i++) { const y = (priceH / 3) * i; ctx.beginPath(); ctx.moveTo(0, Math.round(y) + 0.5); ctx.lineTo(cssW, Math.round(y) + 0.5); ctx.stroke(); }
+  const up = getCSS("--up"), down = getCSS("--down");
+  const n = candles.length, cw = cssW / n, bodyW = Math.max(1.5, Math.min(7, cw * 0.62));
+  candles.forEach((c, i) => {
+    const x = i * cw + cw / 2;
+    const col = c.c >= c.o ? up : down;
+    ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(Math.round(x) + 0.5, yP(c.h)); ctx.lineTo(Math.round(x) + 0.5, yP(c.l)); ctx.stroke();
+    const yo = yP(c.o), yc = yP(c.c), top = Math.min(yo, yc), bh = Math.max(1, Math.abs(yc - yo));
+    ctx.fillRect(x - bodyW / 2, top, bodyW, bh);
+    if (maxV > 0) { const vh = (volH - 2) * ((c.v || 0) / maxV); ctx.globalAlpha = 0.35; ctx.fillRect(x - bodyW / 2, cssH - vh, bodyW, vh); ctx.globalAlpha = 1; }
+  });
+}

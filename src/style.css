@@ -545,6 +545,29 @@ select option { background: var(--card); color: var(--text); }
 ::-webkit-scrollbar-thumb { background: var(--scroll); border-radius: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
 
+/* ---- 종목 호버 미리보기 카드 (토스식 미니차트 팝업) ---- */
+.stock-hover {
+  position: fixed; z-index: 60; width: 300px; pointer-events: none;
+  background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+  box-shadow: var(--shadow-lg); padding: 14px;
+  animation: shIn .12s ease;
+}
+.stock-hover.hidden { display: none; }
+@keyframes shIn { from { opacity: 0; transform: translateY(4px); } }
+.sh-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.sh-ico { width: 34px; height: 34px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; color: #fff; font-weight: 800; font-size: 14px; flex: none; }
+.sh-meta { min-width: 0; }
+.sh-name { display: block; font-size: 14px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sh-price { display: flex; align-items: baseline; gap: 7px; font-variant-numeric: tabular-nums; }
+.sh-price b { font-size: 16px; font-weight: 800; }
+.sh-price span { font-size: 13px; font-weight: 700; }
+.sh-chartwrap { position: relative; height: 118px; margin: 2px 0 10px; }
+.sh-chart { width: 100%; height: 100%; display: block; }
+.sh-tf { position: absolute; top: 0; left: 0; font-size: 11px; font-weight: 700; color: var(--muted); }
+.sh-news { border-top: 1px solid var(--border2); padding-top: 9px; }
+.sh-why { font-size: 12.5px; font-weight: 800; color: var(--brand); }
+.sh-news p { margin: 4px 0 0; font-size: 12px; color: var(--text2); line-height: 1.5; }
+
 /* ===================== 반응형 ===================== */
 @media (max-width: 1100px) {
   .tapp { grid-template-columns: minmax(0, 1fr); }
