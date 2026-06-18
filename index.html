@@ -4,15 +4,20 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="description" content="가상 데이터로 진행하는 모의 투자 멀티플레이 게임" />
-  <title>STONK Battle</title>
+  <title>STONK 증권</title>
+  <!-- 초기 테마(라이트 기본) — CSS 페인트 전에 설정해 깜빡임(FOUC) 방지 -->
+  <script>
+    try { document.documentElement.dataset.theme = localStorage.getItem("stonk:theme") || "light"; }
+    catch (e) { document.documentElement.dataset.theme = "light"; }
+  </script>
   <!-- Pretendard: 깔끔한 한글 UI 폰트 -->
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
   <link
     rel="stylesheet"
     href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css"
   />
-  <script type="module" crossorigin src="./assets/index-Dyaij66Y.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-DuQXxCt9.css">
+  <script type="module" crossorigin src="./assets/index-B9e-MRDc.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-D0qTSsiE.css">
 </head>
 <body>
   <!-- Firebase 연결 실패 안내 배너 -->
@@ -26,7 +31,7 @@
     <div class="card auth-card">
       <div class="brand-hero">
         <span class="brand-mark">S</span>
-        <h1 class="logo-big">STONK <span>Battle</span></h1>
+        <h1 class="logo-big">STONK <span>증권</span></h1>
       </div>
       <span class="virtual-badge">가상 데이터 · 모의투자</span>
       <p class="muted">모든 회사·가격·뉴스는 가상입니다. 실제 투자와 무관합니다.</p>
@@ -43,7 +48,7 @@
     <div class="card auth-card">
       <div class="brand-hero">
         <span class="brand-mark">S</span>
-        <h1 class="logo-big">STONK <span>Battle</span></h1>
+        <h1 class="logo-big">STONK <span>증권</span></h1>
       </div>
       <p class="muted">게임에서 사용할 닉네임을 정하세요.</p>
       <input id="nicknameInput" maxlength="10" placeholder="닉네임 (최대 10자)" autocomplete="off" />
@@ -56,7 +61,7 @@
     <div class="card auth-card">
       <div class="brand-hero">
         <span class="brand-mark">S</span>
-        <h1 class="logo-big">STONK <span>Battle</span></h1>
+        <h1 class="logo-big">STONK <span>증권</span></h1>
       </div>
       <p id="homeNickname" class="nick-chip"></p>
       <button id="btnCreateRoom" class="btn primary big">+ 방 만들기</button>
@@ -93,30 +98,41 @@
     </div>
   </section>
 
-  <!-- 4. 게임 화면 -->
-  <section id="screen-game" class="screen hidden">
-    <header class="topbar">
-      <div class="brand"><span class="brand-mark sm">S</span><span class="brand-text">STONK <b>Battle</b></span></div>
-      <div class="top-chips">
-        <div class="chip"><span class="chip-k">코드</span><b id="gameRoomCode"></b><button id="btnCopyCode2" class="chip-btn">복사</button></div>
-        <div class="chip timer-chip"><span class="chip-k">경과</span><b id="gameTimer" class="timer">00:00</b></div>
-        <div class="chip asset-chip"><span class="chip-k">총자산</span><b id="myAssetTop">-</b></div>
-        <button id="marketStatusChip" class="chip status-chip" type="button" title="시장 상태 보기" aria-expanded="false">
+  <!-- 4. 게임 화면 = 토스 증권 앱 셸 -->
+  <section id="screen-game" class="screen hidden" data-tab="home">
+    <!-- 토스식 상단 글로벌 내비게이션 -->
+    <header class="tnav">
+      <button class="tnav-brand" data-go="home" type="button">
+        <span class="tnav-logo">S</span><span class="tnav-name"><b>STONK</b>증권</span>
+      </button>
+      <nav class="tnav-tabs" id="tnavTabs">
+        <button class="tnav-tab is-active" data-tab="home" type="button">홈</button>
+        <button class="tnav-tab" data-tab="feed" type="button">피드</button>
+        <button class="tnav-tab" data-tab="screener" type="button">주식 골라보기</button>
+        <button class="tnav-tab" data-tab="account" type="button">내 계좌</button>
+      </nav>
+      <div class="tnav-search">
+        <span class="tnav-search-ico">🔍</span>
+        <input id="globalSearch" type="search" placeholder="/ 를 눌러 종목을 검색하세요" autocomplete="off" spellcheck="false" />
+      </div>
+      <div class="tnav-right">
+        <button id="themeToggle" class="tnav-icon-btn" type="button" title="라이트/다크 전환" aria-label="테마 전환"></button>
+        <button id="marketStatusChip" class="tnav-status" type="button" title="시장 상태 보기" aria-expanded="false">
           <span class="status-dot" id="msDot"></span><b id="msLabel">상태</b>
         </button>
+        <div class="tnav-code"><span class="tnav-code-k">방</span><b id="gameRoomCode">-</b><button id="btnCopyCode2" class="chip-btn" type="button">복사</button></div>
+        <div class="tnav-acct">
+          <span class="tnav-avatar" id="navAvatar">U</span>
+          <span class="tnav-acct-info"><b id="navNick">-</b><small id="myAssetTop">-</small></span>
+        </div>
+        <button id="btnLeaveGame" class="btn ghost small">나가기</button>
       </div>
-      <a id="navBoard" class="btn small" target="_blank" rel="noopener">주식소식</a>
-      <a id="navWiki" class="btn small" target="_blank" rel="noopener">주식정보</a>
-      <a id="navAdmin" class="btn small" target="_blank" rel="noopener" hidden>관리자 페이지</a>
-      <button id="btnCopyMarketBoard" class="btn small">포털로 복사</button>
-      <button id="btnEndGame" class="btn small hidden">게임 종료</button>
-      <button id="btnLeaveGame" class="btn ghost small">나가기</button>
     </header>
 
     <div id="marketStatusPanel" class="market-status-panel hidden"></div>
     <div id="newsBar" class="news-bar hidden"></div>
 
-    <!-- 공모주 청약 패널 (청약 기간에만 표시) -->
+    <!-- 공모주 청약 패널 (전역, 청약 기간에만 표시) -->
     <div id="ipoPanel" class="ipo-panel hidden">
       <div class="ipo-left">
         <span class="ipo-badge">공모주 청약</span>
@@ -136,158 +152,232 @@
       </div>
     </div>
 
-    <div class="game-grid">
-      <!-- 좌측: 가상 회사 목록 -->
-      <aside class="card panel list-panel">
-        <h3 class="panel-title">관심 종목</h3>
-        <div class="stock-search">
-          <input id="stockSearch" type="search" inputmode="search" placeholder="종목명, 업종 검색" autocomplete="off" spellcheck="false" />
-          <button id="stockSearchClear" class="stock-search-clear" type="button" title="검색 지우기" hidden>✕</button>
-        </div>
-        <ul id="stockList" class="stock-list"></ul>
-      </aside>
+    <!-- 본문: 좌(탭 뷰) + 우(내 투자 레일) -->
+    <div class="tapp">
+      <main class="tapp-main">
+        <!-- ===================== 홈 탭 ===================== -->
+        <section class="tab-view" data-view="home">
+          <div class="market-line">
+            <span class="ml-live"><span class="live-dot"></span> STONK 마켓 · LIVE <small id="tickCountdownHome"></small></span>
+            <span class="ml-bar"><span id="tickBarHome"></span></span>
+            <span class="ml-room">경과 <b id="gameTimer">00:00</b></span>
+          </div>
+          <div id="indexStrip" class="index-strip"></div>
 
-      <!-- 중앙: 종목 상세 (현재가 + 시고저 + 캔들차트) -->
-      <main class="card panel stock-detail">
-        <div class="detail-head">
-          <div class="detail-name"><span id="chartStockName">-</span><span id="detailTag" class="virtual-tag">가상</span><button id="btnAlert" class="alert-btn" title="가격 알림 설정">🔔</button></div>
-          <div class="price-cluster">
-            <b id="selStockPrice" class="big-price">-</b>
-            <div class="price-sub">
-              <span id="selStockChange" class="change"></span>
-              <span class="live-badge" title="실시간 시장"><span class="live-dot"></span>LIVE <small id="tickCountdown"></small></span>
+          <div class="home-toolbar">
+            <div class="seg" id="homeSeg">
+              <button class="seg-btn is-active" data-home="realtime" type="button">실시간 차트</button>
+              <button class="seg-btn" data-home="sectors" type="button">지금 뜨는 산업</button>
+            </div>
+            <div class="chips" id="homeFilters">
+              <button class="fchip is-active" data-filter="all" type="button">전체</button>
+              <button class="fchip" data-filter="watch" type="button">관심</button>
+              <span class="chips-sp"></span>
+              <button class="fchip sort is-active" data-sort="value" type="button">거래대금</button>
+              <button class="fchip sort" data-sort="volume" type="button">거래량</button>
+              <button class="fchip sort" data-sort="up" type="button">급상승</button>
+              <button class="fchip sort" data-sort="down" type="button">급하락</button>
             </div>
           </div>
-        </div>
-        <div class="tick-progress" aria-hidden="true"><span id="tickBar"></span></div>
-        <div class="ohlc-grid">
-          <div class="ohlc-cell"><span class="ohlc-k">시가</span><b id="ohlcOpen" class="ohlc-v">-</b></div>
-          <div class="ohlc-cell"><span class="ohlc-k">고가</span><b id="ohlcHigh" class="ohlc-v">-</b></div>
-          <div class="ohlc-cell"><span class="ohlc-k">저가</span><b id="ohlcLow" class="ohlc-v">-</b></div>
-          <div class="ohlc-cell"><span class="ohlc-k">상한</span><b id="ohlcUpper" class="ohlc-v up">-</b></div>
-          <div class="ohlc-cell"><span class="ohlc-k">하한</span><b id="ohlcLower" class="ohlc-v down">-</b></div>
-          <div class="ohlc-cell"><span class="ohlc-k">거래량</span><b id="ohlcVol" class="ohlc-v">-</b></div>
-          <div class="ohlc-cell"><span class="ohlc-k">거래대금</span><b id="ohlcValue" class="ohlc-v">-</b></div>
-        </div>
-        <p id="selStockNews" class="news-line"></p>
-        <div class="chart-periods" id="chartPeriods">
-          <button class="cp-btn" data-period="tick" type="button">1틱</button>
-          <button class="cp-btn is-active" data-period="1d" type="button">1일</button>
-          <button class="cp-btn" data-period="3d" type="button">3일</button>
-          <button class="cp-btn" data-period="1w" type="button">1주</button>
-          <button class="cp-btn" data-period="1m" type="button">1달</button>
-          <button class="cp-btn" data-period="all" type="button">전체</button>
-        </div>
-        <p id="chartRangeNote" class="chart-range-note"></p>
-        <div class="chart-wrap"><canvas id="priceChart"></canvas><div id="chartTip" class="chart-tip hidden"></div></div>
+
+          <div class="rank-table card">
+            <div class="rank-row rank-head">
+              <span class="rk-rank">#</span>
+              <span class="rk-name">종목</span>
+              <span class="rk-price">현재가</span>
+              <span class="rk-rate">등락률</span>
+              <span class="rk-value">거래대금</span>
+              <span class="rk-cap">시가총액</span>
+              <span class="rk-sector">산업</span>
+            </div>
+            <ul id="stockList" class="rank-body"></ul>
+          </div>
+
+          <footer class="card log-card">
+            <h3 class="card-h">실시간 체결</h3>
+            <ul id="logList" class="log-list"></ul>
+          </footer>
+        </section>
+
+        <!-- ===================== 피드 탭 ===================== -->
+        <section class="tab-view hidden" data-view="feed">
+          <div id="feedView" class="feed-view"></div>
+        </section>
+
+        <!-- ===================== 주식 골라보기 탭 ===================== -->
+        <section class="tab-view hidden" data-view="screener">
+          <div class="screener">
+            <aside id="screenerPresets" class="screener-aside"></aside>
+            <div class="screener-main">
+              <div id="screenerHead" class="screener-head"></div>
+              <div class="rank-table card">
+                <div class="rank-row rank-head screener-head-row">
+                  <span class="rk-rank">#</span>
+                  <span class="rk-name">종목</span>
+                  <span class="rk-price">현재가</span>
+                  <span class="rk-rate">등락률</span>
+                  <span class="rk-value">거래대금</span>
+                  <span class="rk-cap">시가총액</span>
+                  <span class="rk-sector">산업</span>
+                </div>
+                <ul id="screenerList" class="rank-body"></ul>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===================== 내 계좌 탭 ===================== -->
+        <section class="tab-view hidden" data-view="account">
+          <div id="accountView" class="account-view"></div>
+        </section>
+
+        <!-- ===================== 종목 상세 뷰 ===================== -->
+        <section class="tab-view hidden" data-view="detail" id="detailView">
+          <button id="btnDetailBack" class="detail-back" type="button">← 목록으로</button>
+          <div class="detail-grid">
+            <!-- 좌: 종목 상세 (현재가 + 시고저 + 캔들차트) -->
+            <main class="card panel stock-detail">
+              <div class="detail-head">
+                <div class="detail-name"><span id="chartStockName">-</span><span id="detailTag" class="virtual-tag">가상</span><button id="btnAlert" class="alert-btn" title="가격 알림 설정">🔔</button></div>
+                <div class="price-cluster">
+                  <b id="selStockPrice" class="big-price">-</b>
+                  <div class="price-sub">
+                    <span id="selStockChange" class="change"></span>
+                    <span class="live-badge" title="실시간 시장"><span class="live-dot"></span>LIVE <small id="tickCountdown"></small></span>
+                  </div>
+                </div>
+              </div>
+              <div class="tick-progress" aria-hidden="true"><span id="tickBar"></span></div>
+              <div class="ohlc-grid">
+                <div class="ohlc-cell"><span class="ohlc-k">시가</span><b id="ohlcOpen" class="ohlc-v">-</b></div>
+                <div class="ohlc-cell"><span class="ohlc-k">고가</span><b id="ohlcHigh" class="ohlc-v">-</b></div>
+                <div class="ohlc-cell"><span class="ohlc-k">저가</span><b id="ohlcLow" class="ohlc-v">-</b></div>
+                <div class="ohlc-cell"><span class="ohlc-k">상한</span><b id="ohlcUpper" class="ohlc-v up">-</b></div>
+                <div class="ohlc-cell"><span class="ohlc-k">하한</span><b id="ohlcLower" class="ohlc-v down">-</b></div>
+                <div class="ohlc-cell"><span class="ohlc-k">거래량</span><b id="ohlcVol" class="ohlc-v">-</b></div>
+                <div class="ohlc-cell"><span class="ohlc-k">거래대금</span><b id="ohlcValue" class="ohlc-v">-</b></div>
+              </div>
+              <p id="selStockNews" class="news-line"></p>
+              <div class="chart-periods" id="chartPeriods">
+                <button class="cp-btn" data-period="tick" type="button">1틱</button>
+                <button class="cp-btn is-active" data-period="1d" type="button">1일</button>
+                <button class="cp-btn" data-period="3d" type="button">3일</button>
+                <button class="cp-btn" data-period="1w" type="button">1주</button>
+                <button class="cp-btn" data-period="1m" type="button">1달</button>
+                <button class="cp-btn" data-period="all" type="button">전체</button>
+              </div>
+              <p id="chartRangeNote" class="chart-range-note"></p>
+              <div class="chart-wrap"><canvas id="priceChart"></canvas><div id="chartTip" class="chart-tip hidden"></div></div>
+            </main>
+
+            <!-- 우: 호가창 + 주문 -->
+            <aside class="card panel order-panel">
+              <h3 class="panel-title">호가 · 주문</h3>
+              <div id="orderbook" class="orderbook"></div>
+              <div class="trade-panel">
+                <div class="order-tabs" id="orderTabs">
+                  <button class="order-tab is-active" data-tab="market">시장가</button>
+                  <button class="order-tab" data-tab="limit">지정가</button>
+                  <button class="order-tab" data-tab="stop">손절·익절</button>
+                  <button class="order-tab" data-tab="split">분할</button>
+                </div>
+
+                <div class="qty-row">
+                  <input id="qtyInput" type="number" min="1" value="1" inputmode="numeric" />
+                  <button class="btn qty-btn" data-qty="-10">-10</button>
+                  <button class="btn qty-btn" data-qty="-1">-1</button>
+                  <button class="btn qty-btn" data-qty="1">+1</button>
+                  <button class="btn qty-btn" data-qty="10">+10</button>
+                  <button id="btnMaxQty" class="btn qty-btn max">최대</button>
+                </div>
+
+                <div class="order-pane" data-pane="market">
+                  <div class="trade-btn-row">
+                    <button id="btnBuy" class="btn buy big">매수</button>
+                    <button id="btnSell" class="btn sell big">매도</button>
+                    <button id="btnSellAll" class="btn sell-all">전량 매도</button>
+                  </div>
+                </div>
+
+                <div class="order-pane hidden" data-pane="limit">
+                  <div class="field-row">
+                    <label>지정가</label>
+                    <input id="limitPrice" type="number" min="1" placeholder="가격" inputmode="numeric" />
+                  </div>
+                  <div class="field-row">
+                    <label>유효기간</label>
+                    <select id="limitTif">
+                      <option value="gtc">취소 전까지(GTC)</option>
+                      <option value="day">당일(3분)</option>
+                      <option value="ioc">즉시·취소(IOC)</option>
+                    </select>
+                  </div>
+                  <div class="trade-btn-row two">
+                    <button id="btnLimitBuy" class="btn buy">지정가 매수</button>
+                    <button id="btnLimitSell" class="btn sell">지정가 매도</button>
+                  </div>
+                </div>
+
+                <div class="order-pane hidden" data-pane="stop">
+                  <div class="field-row">
+                    <label class="down">손절가</label>
+                    <input id="stopLoss" type="number" min="1" placeholder="이 가격 이하 매도" inputmode="numeric" />
+                  </div>
+                  <div class="field-row">
+                    <label class="up">익절가</label>
+                    <input id="takeProfit" type="number" min="1" placeholder="이 가격 이상 매도" inputmode="numeric" />
+                  </div>
+                  <button id="btnSetStop" class="btn big">보유분 손절·익절 설정</button>
+                  <p class="reserve-hint">보유 종목에만 설정됩니다. 둘 중 하나만 입력해도 됩니다.</p>
+                </div>
+
+                <div class="order-pane hidden" data-pane="split">
+                  <div class="field-row">
+                    <label>분할 횟수</label>
+                    <input id="splitCount" type="number" min="2" max="10" value="3" inputmode="numeric" />
+                  </div>
+                  <button id="btnSplitBuy" class="btn buy big">분할 매수 걸기</button>
+                  <p class="reserve-hint">현재가부터 아래로 단계별 지정가 매수를 나눠 겁니다.</p>
+                </div>
+
+                <p id="tradeMsg" class="msg"></p>
+
+                <div class="orders-wrap">
+                  <div class="qty-label">미체결 주문</div>
+                  <ul id="orderList" class="order-list"></ul>
+                </div>
+              </div>
+            </aside>
+          </div>
+        </section>
       </main>
 
-      <!-- 우측 상단: 호가창 + 주문 -->
-      <aside class="card panel order-panel">
-        <h3 class="panel-title">호가 · 주문</h3>
-        <div id="orderbook" class="orderbook"></div>
-        <div class="trade-panel">
-          <!-- 주문 유형 탭 -->
-          <div class="order-tabs" id="orderTabs">
-            <button class="order-tab is-active" data-tab="market">시장가</button>
-            <button class="order-tab" data-tab="limit">지정가</button>
-            <button class="order-tab" data-tab="stop">손절·익절</button>
-            <button class="order-tab" data-tab="split">분할</button>
-          </div>
-
-          <!-- 공통 수량 -->
-          <div class="qty-row">
-            <input id="qtyInput" type="number" min="1" value="1" inputmode="numeric" />
-            <button class="btn qty-btn" data-qty="-10">-10</button>
-            <button class="btn qty-btn" data-qty="-1">-1</button>
-            <button class="btn qty-btn" data-qty="1">+1</button>
-            <button class="btn qty-btn" data-qty="10">+10</button>
-            <button id="btnMaxQty" class="btn qty-btn max">최대</button>
-          </div>
-
-          <!-- 시장가 -->
-          <div class="order-pane" data-pane="market">
-            <div class="trade-btn-row">
-              <button id="btnBuy" class="btn buy big">매수</button>
-              <button id="btnSell" class="btn sell big">매도</button>
-              <button id="btnSellAll" class="btn sell-all">전량 매도</button>
-            </div>
-          </div>
-
-          <!-- 지정가 -->
-          <div class="order-pane hidden" data-pane="limit">
-            <div class="field-row">
-              <label>지정가</label>
-              <input id="limitPrice" type="number" min="1" placeholder="가격" inputmode="numeric" />
-            </div>
-            <div class="field-row">
-              <label>유효기간</label>
-              <select id="limitTif">
-                <option value="gtc">취소 전까지(GTC)</option>
-                <option value="day">당일(3분)</option>
-                <option value="ioc">즉시·취소(IOC)</option>
-              </select>
-            </div>
-            <div class="trade-btn-row two">
-              <button id="btnLimitBuy" class="btn buy">지정가 매수</button>
-              <button id="btnLimitSell" class="btn sell">지정가 매도</button>
-            </div>
-          </div>
-
-          <!-- 손절·익절 -->
-          <div class="order-pane hidden" data-pane="stop">
-            <div class="field-row">
-              <label class="down">손절가</label>
-              <input id="stopLoss" type="number" min="1" placeholder="이 가격 이하 매도" inputmode="numeric" />
-            </div>
-            <div class="field-row">
-              <label class="up">익절가</label>
-              <input id="takeProfit" type="number" min="1" placeholder="이 가격 이상 매도" inputmode="numeric" />
-            </div>
-            <button id="btnSetStop" class="btn big">보유분 손절·익절 설정</button>
-            <p class="reserve-hint">보유 종목에만 설정됩니다. 둘 중 하나만 입력해도 됩니다.</p>
-          </div>
-
-          <!-- 분할매수 -->
-          <div class="order-pane hidden" data-pane="split">
-            <div class="field-row">
-              <label>분할 횟수</label>
-              <input id="splitCount" type="number" min="2" max="10" value="3" inputmode="numeric" />
-            </div>
-            <button id="btnSplitBuy" class="btn buy big">분할 매수 걸기</button>
-            <p class="reserve-hint">현재가부터 아래로 단계별 지정가 매수를 나눠 겁니다.</p>
-          </div>
-
-          <p id="tradeMsg" class="msg"></p>
-
-          <!-- 미체결 주문 -->
-          <div class="orders-wrap">
-            <div class="qty-label">미체결 주문</div>
-            <ul id="orderList" class="order-list"></ul>
-          </div>
+      <!-- 우측: 내 투자 레일 (홈/상세 탭에서 표시) -->
+      <aside id="investRail" class="invest-rail">
+        <div class="card rail-card rail-invest-card">
+          <div class="rail-acct"><span class="rail-acct-name">기본계좌</span><span class="rail-acct-cur">원화</span></div>
+          <span class="rail-k">내 투자</span>
+          <b id="myAsset" class="rail-asset">-</b>
+          <div id="myPnl" class="rail-pnl muted">평가손익 —</div>
+          <div class="rail-sub"><span>주문가능 현금</span><b id="myCash">-</b></div>
         </div>
-      </aside>
-
-      <!-- 우측: 내 포트폴리오 / 순위 -->
-      <aside class="card panel port-panel">
-        <h3 class="panel-title">내 자산</h3>
-        <div class="asset-box">
-          <div class="asset-row"><span>총자산</span><b id="myAsset">-</b></div>
-          <div class="asset-row sub"><span>주문가능 현금</span><b id="myCash">-</b></div>
-          <div id="myPnl" class="asset-pnl muted">평가손익 —</div>
+        <div class="card rail-card">
+          <h4 class="rail-h">보유 종목</h4>
+          <ul id="holdingsList" class="holdings-list"></ul>
         </div>
-        <h4 class="sub-title">보유 종목</h4>
-        <ul id="holdingsList" class="holdings-list"></ul>
-        <h4 class="sub-title">실시간 순위</h4>
-        <ol id="rankingList" class="ranking-list"></ol>
+        <div class="card rail-card">
+          <h4 class="rail-h">실시간 순위</h4>
+          <ol id="rankingList" class="ranking-list"></ol>
+        </div>
+        <div class="rail-links">
+          <a id="navBoard" class="rail-link" target="_blank" rel="noopener">주식소식 ↗</a>
+          <a id="navWiki" class="rail-link" target="_blank" rel="noopener">주식정보 ↗</a>
+          <a id="navAdmin" class="rail-link" target="_blank" rel="noopener" hidden>관리자 ↗</a>
+          <button id="btnCopyMarketBoard" class="rail-link as-btn" type="button">포털로 복사</button>
+          <button id="btnEndGame" class="rail-link as-btn danger hidden" type="button">게임 종료</button>
+        </div>
       </aside>
     </div>
-
-    <!-- 하단: 거래 로그 -->
-    <footer class="card panel log-panel">
-      <h3 class="panel-title">실시간 체결</h3>
-      <ul id="logList" class="log-list"></ul>
-    </footer>
   </section>
 
   <!-- 5. 결과 화면 -->
