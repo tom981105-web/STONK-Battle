@@ -578,17 +578,61 @@ select option { background: var(--card); color: var(--text); }
   .feed-side, .feed-aside, .screener-aside, .acct-side { position: static; flex-direction: row; flex-wrap: wrap; overflow-x: auto; }
 }
 @media (max-width: 760px) {
-  .tnav { gap: 10px; padding: 0 12px; height: 52px; }
+  /* ===== 슬림 상단 헤더: 로고 + 검색 + 테마 + 아바타 (탭은 하단 바로 이동) ===== */
+  .tnav { gap: 8px; padding: 0 12px; height: 54px; }
   .tnav-name, .tnav-acct-info, .tnav-code { display: none; }
-  .tnav-tabs { gap: 0; }
-  .tnav-tab { padding: 8px 8px; font-size: 14px; }
-  .tnav-search { max-width: none; }
-  .tapp { padding: 12px; gap: 12px; }
-  .rank-row, .rank-item { grid-template-columns: 30px minmax(0, 1.7fr) 1fr 0.9fr; gap: 6px; padding: 10px 12px; }
+  .tnav-status { display: none; }          /* 시장상태 칩은 모바일에서 숨김(공간 확보) */
+  .tnav-search { order: 2; flex: 1; max-width: none; min-width: 0; }
+  .tnav-search input { height: 36px; }
+  .tnav-right { gap: 8px; }
+
+  /* ===== 하단 탭 바 (모바일 표준 네비) ===== */
+  .tnav-tabs {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
+    display: flex; gap: 0; height: 58px; padding: 0 4px;
+    padding-bottom: env(safe-area-inset-bottom, 0);
+    background: var(--card); border-top: 1px solid var(--border);
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.18);
+  }
+  .tnav-tab {
+    flex: 1 1 0; min-width: 0; min-height: 58px; padding: 8px 2px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12.5px; font-weight: 700; white-space: nowrap; border-radius: 0;
+    border-top: 2px solid transparent;
+  }
+  .tnav-tab.is-active { color: var(--brand); border-top-color: var(--brand); background: var(--brand-soft); }
+  body.has-skin .tnav-tabs { background: rgba(14, 16, 23, 0.92); backdrop-filter: blur(16px); }
+
+  /* 하단 바에 가리지 않도록 본문 여백 확보 */
+  .tapp { padding: 12px 12px 84px; gap: 12px; }
+  .feed-view, .screener, .account-view, .detail-grid { padding-bottom: 76px; }
+
+  /* ===== 종목 표: 등락률/현재가 줄바꿈 방지 ===== */
+  .rank-row, .rank-item { grid-template-columns: 26px minmax(0, 1.7fr) 0.95fr 0.95fr; gap: 6px; padding: 11px 12px; }
   .rk-value, .rk-cap, .rk-sector { display: none; }
-  .index-strip { grid-auto-columns: minmax(140px, 1fr); }
+  .rk-price, .rk-rate { white-space: nowrap; font-size: 13.5px; }
+  .stk-nm { font-size: 13.5px; }
+  .stk-sub { font-size: 11px; }
+  .stk-ico { width: 28px; height: 28px; font-size: 12px; }
+  .tag { display: none; }                  /* 행 안 배지는 모바일에서 숨겨 이름 줄바꿈 방지 */
+
+  .index-strip { grid-auto-columns: minmax(132px, 1fr); }
+
+  /* ===== 상세(거래) 화면: 세로 스택 + 큰 터치 영역 ===== */
   .big-price { font-size: 26px; }
   .ohlc-grid { grid-template-columns: repeat(3, 1fr); }
+  .detail-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .trade-btn-row, .trade-btn-row.two { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .trade-panel .btn { min-height: 50px; font-size: 15px; }
+  .ob-row { height: 26px; }
+}
+
+/* 아주 좁은 화면(소형 폰) 보정 */
+@media (max-width: 380px) {
+  .tnav-search { display: none; }          /* 검색은 숨기고 탭/아바타 우선 */
+  .tnav-tab { font-size: 12px; }
+  .rank-row, .rank-item { grid-template-columns: 22px minmax(0, 1.6fr) 0.9fr 0.95fr; padding: 11px 10px; }
+  .index-card { padding: 10px 12px; }
 }
 
 /* ===================== 배경 스킨 장착 시 (벽지 + 프로스티드 글래스) =====================
