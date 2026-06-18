@@ -53,10 +53,10 @@ function fmtVol(n) {
   return fmtNum(n) + "주";
 }
 
-const SCREENS = ["screen-login", "screen-auth", "screen-home", "screen-lobby", "screen-game", "screen-result"];
+const SCREENS = ["screen-auth", "screen-wait", "screen-game", "screen-result"];
 
 export function showScreen(name) {
-  SCREENS.forEach((id) => $(id).classList.toggle("hidden", id !== name));
+  SCREENS.forEach((id) => { const el = $(id); if (el) el.classList.toggle("hidden", id !== name); });
 }
 
 export function setMsg(id, text, isError = true) {
