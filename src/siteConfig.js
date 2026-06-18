@@ -67,7 +67,8 @@ export function getLastRoomCode() {
 }
 
 export function getCurrentRoomCode() {
-  return getUrlRoomCode() || getLastRoomCode();
+  // 단일 방 운영: 항상 고정 방(MAIN)
+  return getUrlRoomCode() || getLastRoomCode() || "MAIN";
 }
 
 function baseUrl(site) {
