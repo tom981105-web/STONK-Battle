@@ -33,6 +33,7 @@ function ensureLayer() {
 }
 
 function hide() {
+  document.body.classList.remove("has-skin");
   if (layer) {
     layer.style.opacity = "0";
     // 페이드 아웃 후 이미지 해제(메모리)
@@ -65,7 +66,11 @@ export function applyEquippedBackground(itemId) {
     if (lastId !== id) return; // 그 사이 다른 걸로 바뀌었으면 취소
     if (!url) { hide(); return; } // 이미지가 아직 없음 → 기본 배경 유지
     const el = ensureLayer();
-    el.style.backgroundImage = `linear-gradient(rgba(8,10,16,0.72), rgba(8,10,16,0.85)), url("${url}")`;
+    // 스킨을 '벽지'처럼: 가장자리는 부드럽게 어둡게(비네팅) + 전체는 가벼운 스크림만.
+    // 본문 카드는 .has-skin 에서 프로스티드 글래스가 되어 가독성을 확보하므로 스크림을 옅게 둔다.
+    el.style.backgroundImage =
+      `radial-gradient(120% 90% at 50% 12%, rgba(10,12,20,0.30) 0%, rgba(8,10,16,0.52) 55%, rgba(6,7,12,0.74) 100%), url("${url}")`;
     el.style.opacity = "1";
+    document.body.classList.add("has-skin");
   });
 }

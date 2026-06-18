@@ -590,3 +590,31 @@ select option { background: var(--card); color: var(--text); }
   .big-price { font-size: 26px; }
   .ohlc-grid { grid-template-columns: repeat(3, 1fr); }
 }
+
+/* ===================== 배경 스킨 장착 시 (벽지 + 프로스티드 글래스) =====================
+ * 스킨을 장착하면 equip.js 가 body.has-skin 을 켠다. 이때 본문 패널을 반투명 + 블러로 바꿔
+ * 벽지가 UI 사이로 은은히 비치게 하고(한 몸처럼), 동시에 데이터는 또렷하게 읽히도록 한다.
+ * (불투명 카드를 사진 위에 그냥 얹으면 '붙여놓은 듯' 따로 놀아 지저분해 보였던 문제 해결) */
+body.has-skin .card,
+body.has-skin .index-card,
+body.has-skin .market-status-panel {
+  background: rgba(18, 20, 28, 0.58);
+  backdrop-filter: blur(16px) saturate(130%);
+  -webkit-backdrop-filter: blur(16px) saturate(130%);
+  border-color: rgba(255, 255, 255, 0.10);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.40), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+body.has-skin .tnav {
+  background: rgba(14, 16, 23, 0.70);
+  backdrop-filter: blur(16px) saturate(130%);
+  -webkit-backdrop-filter: blur(16px) saturate(130%);
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+/* 강조 카드(뉴스·IPO·투자레일)는 고유 색을 유지하되 살짝 비치게 */
+body.has-skin .news-bar,
+body.has-skin .ipo-panel,
+body.has-skin .rail-invest-card { backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+/* 글래스 위에서 행 hover / 구분선을 또렷하게 */
+body.has-skin .rank-item:hover { background: rgba(255, 255, 255, 0.06); }
+body.has-skin .rank-item { border-bottom-color: rgba(255, 255, 255, 0.06); }
+body.has-skin .rank-head { border-bottom-color: rgba(255, 255, 255, 0.10); }

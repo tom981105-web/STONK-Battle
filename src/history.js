@@ -81,7 +81,7 @@ function simulateStock(stock, fromT, toT, numSteps) {
   let trend = stock.trend || 0;
   let heat = stock.heat || 0;
   const isEquity = !stock.type || stock.type === "stock";
-  const perTick = 0.00115 * volat * (isEquity ? 1 : 0.7); // 실시간 1틱 own 표준편차 근사
+  const perTick = 0.0011 * volat * (isEquity ? 1 : 0.7); // 실시간 1틱 own 표준편차 근사
   const sub = 5;
   const candles = [];
 
@@ -92,16 +92,18 @@ function simulateStock(stock, fromT, toT, numSteps) {
     let hi = open, lo = open, cur = open;
     for (let k = 0; k < sub; k++) {
       // 추세(모멘텀): 완만한 OU 워크 — 방향성은 주되 한 방향 폭주는 막음
-      trend = clamp(trend * Math.pow(0.99, tps) + randn() * 0.00028 * volat * Math.sqrt(tps), -0.0022, 0.0022);
+      trend = clamp(trend * Math.pow(0.99, tps) + randn() * 0.00018 * volat * Math.sqrt(tps), -0.0016, 0.0016);
       // 과열(테마) 가끔 발동 → 변동/거래 일시 확대
-      if (Math.random() < 0.006 * tps) heat = clamp(heat + (0.3 + Math.random() * 0.7), 0, 1.8);
+      if (Math.random() < 0.005 * tps) heat = clamp(heat + (0.3 + Math.random() * 0.7), 0, 1.6);
       heat *= Math.pow(0.94, tps);
-      const effStd = perTick * (1 + heat * 0.6);
+      const effStd = perTick * (1 + heat * 0.5);
       // 변동 = 추세*틱수 + 랜덤워크(분산은 틱수에 비례 → 경과시간만큼 누적·증가)
       let ret = trend * tps + randn() * effStd * Math.sqrt(tps);
       // 뉴스 한 방 충격(드물게)
-      if (Math.random() < 0.004 * tps) ret += (Math.random() < 0.5 ? 1 : -1) * (0.008 + Math.random() * 0.028) * (isEquity ? 1 : 0.6);
+      if (Math.random() < 0.0025 * tps) ret += (Math.random() < 0.5 ? 1 : -1) * (0.006 + Math.random() * 0.018) * (isEquity ? 1 : 0.6);
       cur = cur * (1 + ret);
+      // 평균회귀: 기준가 쪽으로 지수 감쇠(per-tick 1%). 절대 base 를 넘어 과도하게 당기지 않음(tps 가 커도 안전)
+      cur = base + (cur - base) * Math.exp(-0.01 * tps);
       cur = clamp(cur, lowerLimit(base), upperLimit(base)); // ±30% 하드 밴드(실시간과 동일)
       cur = Math.max(MIN_PRICE, cur);
       hi = Math.max(hi, cur);
