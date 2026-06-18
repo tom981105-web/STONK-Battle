@@ -13,7 +13,7 @@
 //   (currentPrice/price/changeRate 등 기존 가격 필드는 그대로 유지)
 
 import { db } from "./firebase.js";
-import { ref, update, runTransaction } from "firebase/database";
+import { ref, update, runTransaction, get } from "firebase/database";
 import { roundToTick, lowerLimit, upperLimit, MIN_PRICE } from "./game.js";
 
 export const CATCHUP_VERSION = 1;
@@ -186,7 +186,12 @@ export async function runCatchUp(roomCode, roomData, uid, opts = {}) {
   if (!locked && !opts.force) return { applied: false, reason: "locked" };
 
   try {
-    const stocks = roomData.stocks;
+    // 렌더용 roomData 는 history 를 제외하므로, 병합 정확성을 위해 stocks(history 포함)를 신선하게 읽는다.
+    let stocks = roomData.stocks || {};
+    try {
+      const fresh = await get(ref(db, `rooms/${roomCode}/stocks`));
+      if (fresh.exists()) stocks = fresh.val();
+    } catch (e) { /* 읽기 실패 시 전달된 roomData.stocks 로 폴백 */ }
     const ids = Object.keys(stocks);
     if (!ids.length) return { applied: false, reason: "no-stocks" };
 
@@ -298,14 +303,21 @@ export async function flushLiveCandles(roomCode, roomData, live) {
 
   // 분 경계 넘음 → 직전 분 캔들들을 한 번의 update 로 저장
   const closedBucket = live.lastBucket;
+  // 렌더용 roomData 는 history 를 제외하므로, 상위 tier(5m/15m/1h) 병합·prune 을 위해
+  // history 를 신선하게 읽는다(분 경계에서만 = 분당 1회, 사용량 무시 가능).
+  let histStocks = stocks;
+  try {
+    const fresh = await get(ref(db, `rooms/${roomCode}/stocks`));
+    if (fresh.exists()) histStocks = fresh.val();
+  } catch (e) { /* 읽기 실패 시 전달된 roomData 로 폴백 */ }
   const updates = {};
   let wrote = false;
-  for (const [id, s] of Object.entries(stocks)) {
+  for (const id of Object.keys(stocks)) {
     const c = live.cur[id];
     if (!c) continue;
     const closed = { t: closedBucket, o: c.o, h: c.h, l: c.l, c: c.c, v: c.v };
     const P = `stocks/${id}/`;
-    const hist = (s.history) || {};
+    const hist = (histStocks[id] && histStocks[id].history) || {};
     for (const tier of TIERS) {
       const bk = bucketStart(closedBucket, tier.win);
       const existing = (hist[tier.key] && hist[tier.key][bk]) || null;

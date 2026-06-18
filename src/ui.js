@@ -90,6 +90,7 @@ export function resetLocalHistory() {
   lastTickSeen = 0;
   candleKey = null;
   prevPriceByName = {};
+  lastChartSig = ""; // 새 게임 → 차트 시그니처 초기화(첫 그리기 강제)
   for (const k in lastShownPrice) delete lastShownPrice[k];
 }
 
@@ -354,6 +355,7 @@ function matchStock(id, s) {
 function renderStockList(room, selectedStockId) {
   const list = $("stockList");
   const stocks = room.stocks || {};
+  const prevScroll = list.scrollTop; // 매 틱 재생성으로 스크롤이 튀지 않게 보존
   list.innerHTML = "";
   // 관심종목을 위로 정렬 + 검색어 필터
   const entries = Object.entries(stocks)
@@ -385,6 +387,7 @@ function renderStockList(room, selectedStockId) {
     `;
     list.appendChild(li);
   });
+  list.scrollTop = prevScroll; // 스크롤 위치 복원
 }
 
 // 종목 상세: 현재가/전일대비/등락률 + 시고저 + 거래량/거래대금 + 캔들차트
@@ -513,6 +516,7 @@ let chartHover = -1; // 선택(호버/터치)된 캔들 인덱스
 let chartGeom = null; // 마지막 렌더 좌표계 { cw, plotW, priceH, volH, yP, candles, lo, hi }
 let chartCtx = null; // { room, id, base }
 let chartBound = false;
+let lastChartSig = ""; // 마지막으로 그린 차트 시그니처(동일하면 캔버스 재그리기 생략)
 
 // 현재가가 마지막 종가와 다르면 현재가 캔들을 이어 붙여 연속·현재가 강조
 function appendLive(series, stock) {
@@ -568,6 +572,12 @@ function buildSeries(stock, id, period) {
 function drawChart(room, id, base, stock) {
   chartCtx = { room, id, base };
   const series = buildSeries(stock, id, chartPeriod);
+  // 선택 종목과 무관한 변경(다른 종목 체결·순위·로그 등)으로 renderGame 이 와도
+  // 데이터가 같으면 캔버스 재그리기를 생략한다(틱 사이 불필요한 redraw 제거).
+  const tail = series.length ? series[series.length - 1] : null;
+  const sig = `${id}|${chartPeriod}|${series.length}|${tail ? tail.c + ":" + tail.v : ""}|${base}`;
+  if (sig === lastChartSig) { setupChartInteraction(); return; }
+  lastChartSig = sig;
   chartHover = -1;
   hideChartTip();
   renderCandles($("priceChart"), series, base, -1);
@@ -806,6 +816,7 @@ function roundRect(ctx, x, y, w, h, r) {
 
 // 화면 정리 시 캔버스 비우기
 export function destroyChart() {
+  lastChartSig = ""; // 재진입 시 첫 그리기 강제
   const canvas = $("priceChart");
   if (canvas) {
     const ctx = canvas.getContext("2d");

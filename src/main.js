@@ -51,6 +51,11 @@ const state = {
   clockTimer: null, // 남은 시간 표시용
   roomRef: null,
   lastStatus: null,
+  // 성능: 방 스냅샷에서 캔들 history 를 제외하고(렌더 비용↓), 선택 종목 history 만 따로 구독
+  histRef: null, // 선택 종목 history 구독 ref
+  histStockId: null, // 현재 history 를 구독 중인 종목 id
+  selectedHistory: null, // { id, data } 선택 종목의 최신 history
+  renderQueued: false, // requestAnimationFrame 렌더 코얼레스 플래그
   // Phase 3: 중간 참여(late-join) 승인 대기 구독
   joinReqRef: null,
   joinReqId: null,
@@ -489,8 +494,67 @@ function enterRoom(code) {
 
   if (state.roomRef) off(state.roomRef);
   state.roomRef = ref(db, `rooms/${code}`);
-  onValue(state.roomRef, (snap) => onRoomUpdate(snap.val()), (e) => {
+  // 성능 핵심: snap.val() 은 history(종목당 수백 캔들)까지 통째로 매번 materialize 하므로
+  // snapToRoom 으로 history 를 제외한 "가벼운 방" 만 만든다. 선택 종목 history 는 별도 구독.
+  onValue(state.roomRef, (snap) => onRoomUpdate(snapToRoom(snap)), (e) => {
     console.error("[room] 구독 오류:", e);
+  });
+}
+
+// 방 스냅샷 → 렌더용 가벼운 객체(각 종목의 history 서브트리는 .val() 하지 않아 비용 0).
+// 시세 틱마다 history 가 커질수록 snap.val() 전체 materialize 가 렉의 핵심 원인이었다.
+function snapToRoom(snap) {
+  if (!snap || !snap.exists()) return null;
+  const room = {};
+  snap.forEach((child) => {
+    if (child.key === "stocks") {
+      const stocks = {};
+      child.forEach((st) => {
+        const sv = {};
+        st.forEach((f) => { if (f.key !== "history") sv[f.key] = f.val(); });
+        stocks[st.key] = sv;
+      });
+      room.stocks = stocks;
+    } else {
+      room[child.key] = child.val();
+    }
+  });
+  return room;
+}
+
+// 가벼운 방에 선택 종목의 최신 history 만 다시 붙인다(차트 buildSeries 용).
+function attachSelectedHistory(room) {
+  const sh = state.selectedHistory;
+  if (sh && sh.id && room && room.stocks && room.stocks[sh.id]) {
+    room.stocks[sh.id].history = sh.data || null;
+  }
+}
+
+// 선택 종목의 history 만 따로 구독(바뀔 때마다 재구독). 나머지 종목 history 는 받지 않는다.
+function subscribeSelectedHistory(stockId) {
+  if (stockId === state.histStockId) return; // 동일 종목 → 재구독 불필요
+  if (state.histRef) { off(state.histRef); state.histRef = null; }
+  state.histStockId = stockId || null;
+  state.selectedHistory = stockId ? { id: stockId, data: null } : null;
+  if (!stockId || !state.roomCode) return;
+  state.histRef = ref(db, `rooms/${state.roomCode}/stocks/${stockId}/history`);
+  onValue(state.histRef, (snap) => {
+    if (state.histStockId !== stockId) return; // 그 사이 다른 종목으로 전환됨
+    state.selectedHistory = { id: stockId, data: snap.val() || null };
+    if (state.roomData && state.roomData.stocks && state.roomData.stocks[stockId]) {
+      state.roomData.stocks[stockId].history = state.selectedHistory.data;
+    }
+    scheduleRender(); // 차트만 갱신해도 되지만 코얼레스되므로 비용 낮음
+  }, (e) => console.error("[history] 구독 오류:", e));
+}
+
+// 렌더 코얼레스: 다발성 onValue 가 와도 프레임당 renderGame 1회만 실행.
+function scheduleRender() {
+  if (state.renderQueued) return;
+  state.renderQueued = true;
+  requestAnimationFrame(() => {
+    state.renderQueued = false;
+    if (state.roomData && state.roomData.status === "playing") ui.renderGame(state);
   });
 }
 
@@ -502,6 +566,7 @@ function onRoomUpdate(room) {
     return;
   }
   state.roomData = room;
+  attachSelectedHistory(room); // 가벼운 방에 선택 종목 history 재부착(차트용)
 
   // 착용한 배경화면(스킨) 적용: rooms/{code}/players/{uid}/equippedBackground
   applyEquippedBackground(room.players && state.uid && room.players[state.uid] ? room.players[state.uid].equippedBackground : null);
@@ -518,7 +583,9 @@ function onRoomUpdate(room) {
       const ids = Object.keys(room.stocks || {});
       if (!state.selectedStockId && ids.length) state.selectedStockId = ids[0];
     }
-    ui.renderGame(state);
+    // 선택 종목이 바뀌었으면(자동 선택 포함) 그 종목 history 만 구독 — 동일 id 면 no-op
+    if (state.selectedStockId !== state.histStockId) subscribeSelectedHistory(state.selectedStockId);
+    scheduleRender();
     // 방장에게만 '게임 종료' 버튼 노출
     document.getElementById("btnEndGame").classList.toggle("hidden", room.hostId !== state.uid);
     // 방 로드 시 1회: 사람이 없던 시간(경과)을 보정 (중복은 lock 으로 방지)
@@ -530,6 +597,7 @@ function onRoomUpdate(room) {
     stopDriving();
     stopDriverWatch();
     stopClock();
+    subscribeSelectedHistory(null); // 선택 종목 history 구독 해제
     ui.destroyChart();
     ui.showScreen("screen-result");
     ui.renderResult(room, state.uid);
@@ -717,6 +785,7 @@ function leaveToHome(msg) {
     off(state.roomRef);
     state.roomRef = null;
   }
+  subscribeSelectedHistory(null); // 선택 종목 history 구독 해제 + 상태 초기화
   state.roomCode = null;
   state.roomData = null;
   state.selectedStockId = null;
@@ -989,14 +1058,15 @@ function bindEvents() {
     if (star) {
       e.stopPropagation();
       ui.toggleWatch(star.dataset.star);
-      if (state.roomData) ui.renderGame(state);
+      scheduleRender();
       return;
     }
     const item = e.target.closest(".stock-item");
     if (!item) return;
     state.selectedStockId = item.dataset.id;
+    subscribeSelectedHistory(item.dataset.id); // 선택 종목 history 로 구독 전환
     prefillOrderPrices(item.dataset.id);
-    if (state.roomData) ui.renderGame(state);
+    scheduleRender();
   });
 
   // 게임: 수량 조절
@@ -1053,7 +1123,7 @@ function bindEvents() {
     const price = Math.floor(Number(input) || 0);
     ui.setAlert(s.name, price);
     ui.showToast(price ? `${s.name} ${price.toLocaleString("ko-KR")}원 알림 설정됨` : `${s.name} 알림 해제됨`);
-    if (state.roomData) ui.renderGame(state);
+    scheduleRender();
   });
 
   // 공모주 청약
@@ -1066,7 +1136,7 @@ function bindEvents() {
     stockSearch.addEventListener("input", () => {
       ui.setStockQuery(stockSearch.value);
       if (stockSearchClear) stockSearchClear.hidden = !stockSearch.value;
-      if (state.roomData) ui.renderGame(state);
+      scheduleRender();
     });
   }
   if (stockSearchClear) {
@@ -1075,7 +1145,7 @@ function bindEvents() {
       ui.setStockQuery("");
       stockSearchClear.hidden = true;
       stockSearch.focus();
-      if (state.roomData) ui.renderGame(state);
+      scheduleRender();
     });
   }
 
