@@ -33,6 +33,10 @@ import { applyEquippedBackground } from "./equip.js";
 const ADMIN_UID = "yaV8N60yIiUggaWNpNF2VhkCwxb2";
 const ADMIN_EMAIL = "tomem@naver.com";
 
+// 단일 방 운영: 방 코드 개념을 없애고 고정 방 하나만 사용한다.
+// (사용자에겐 '방 코드'를 노출하지 않는다. 시장 시작/리셋은 STONK Admin 에서만.)
+const MAIN_ROOM = "MAIN";
+
 // ----- 전역 상태 -----
 const state = {
   uid: null,
@@ -124,16 +128,10 @@ function boot() {
       state.isDbAdmin = false;
       const na = document.getElementById("navAdmin");
       if (na) na.hidden = true; // 로그아웃/미로그인 시 관리자 링크 숨김
-      // PHASE 3: 로그인은 STONK Home 중심. 직접 접속(미로그인)은 Home 으로 안내.
-      // 개발/로컬에서는 기존 자체 로그인 화면을 fallback 으로 유지한다.
-      if (isLocalDev()) {
-        ui.showScreen("screen-login");
-      } else {
-        showHomeGate({
-          message: "로그인은 STONK Home에서 진행합니다. Home에서 방을 선택해 입장해 주세요.",
-          roomCode: getEntryRoomCode(),
-        });
-      }
+      // 로그인 화면 제거: 미로그인이면 board/wiki 처럼 STONK Home 으로 안내하는 게이트만 띄운다.
+      showHomeGate({
+        message: "로그인은 STONK Home에서 진행합니다. Home에서 입장하면 자동으로 연결됩니다.",
+      });
     }
   });
 }
@@ -156,105 +154,13 @@ async function refreshAdminLink() {
   navAdmin.hidden = !isAdm;
 }
 
-// Firebase Auth 오류 코드를 한국어 안내로 변환
-function authErrorMessage(e) {
-  const code = e?.code || "";
-  const map = {
-    "auth/invalid-email": "이메일 형식이 올바르지 않습니다.",
-    "auth/missing-password": "비밀번호를 입력하세요.",
-    "auth/weak-password": "비밀번호는 6자 이상이어야 합니다.",
-    "auth/email-already-in-use": "이미 가입된 이메일입니다. 로그인을 눌러주세요.",
-    "auth/invalid-credential": "이메일 또는 비밀번호가 올바르지 않습니다.",
-    "auth/user-not-found": "가입되지 않은 이메일입니다. 회원가입을 눌러주세요.",
-    "auth/wrong-password": "비밀번호가 올바르지 않습니다.",
-    "auth/too-many-requests": "시도가 너무 많습니다. 잠시 후 다시 시도하세요.",
-    "auth/network-request-failed": "네트워크 오류입니다. 연결을 확인하세요.",
-    "auth/operation-not-allowed":
-      "Firebase 콘솔에서 이메일/비밀번호 로그인을 활성화했는지 확인하세요.",
-  };
-  return map[code] || "오류: " + (e?.message || code);
-}
-
-// 로그인 / 회원가입 처리
-async function doAuth(kind) {
-  const email = document.getElementById("emailInput").value.trim();
-  const password = document.getElementById("passwordInput").value;
-  if (!email || !password) {
-    ui.setMsg("loginMsg", "이메일과 비밀번호를 입력하세요.");
-    return;
-  }
-  ui.setMsg("loginMsg", kind === "signup" ? "가입 중..." : "로그인 중...", false);
-  try {
-    if (kind === "signup") {
-      await createUserWithEmailAndPassword(auth, email, password);
-    } else {
-      await signInWithEmailAndPassword(auth, email, password);
-    }
-    // 성공 시 onAuthStateChanged 가 다음 화면으로 이동시킴
-    ui.setMsg("loginMsg", "", false);
-  } catch (e) {
-    console.error("[auth]", e);
-    ui.setMsg("loginMsg", authErrorMessage(e));
-  }
-}
-
-// 로그인 후: 닉네임 유무 + 이전 방 재접속 시도
+// 로그인 후: 닉네임 확인 → 고정 방(MAIN) 에 바로 입장. (방 선택/생성 단계 없음)
 async function afterLogin() {
   if (!state.nickname) {
     ui.showScreen("screen-auth");
     return;
   }
-  // PHASE 3: Home 에서 ?room= 으로 들어온 경우 그 방으로 바로 입장(Home 주도 진입).
-  const urlRoom = site.getUrlRoomCode();
-  if (urlRoom) {
-    goHome();              // 입장 처리 중/실패 시에도 빈 화면이 되지 않도록 홈 화면을 먼저 표시
-    await joinRoom(urlRoom); // 멤버면 재입장, 대기방이면 참여, 진행방이면 승인 요청
-    return;
-  }
-  // 새로고침 대응: localStorage의 방 코드로 재접속 시도
-  const savedRoom = localStorage.getItem("mb_roomCode");
-  if (savedRoom) {
-    try {
-      const snap = await get(ref(db, `rooms/${savedRoom}`));
-      const room = snap.val();
-      if (room && room.players?.[state.uid] && room.status !== "ended") {
-        enterRoom(savedRoom);
-        return;
-      }
-    } catch (e) {
-      console.warn("[rejoin] 재접속 실패:", e);
-    }
-    localStorage.removeItem("mb_roomCode");
-  }
-  // 방 컨텍스트가 전혀 없으면: 배포 환경은 Home 으로 안내, 개발 환경은 자체 홈(방 생성/입력) 표시
-  if (isLocalDev()) {
-    goHome();
-  } else {
-    showHomeGate({ message: "입장할 방이 없습니다. STONK Home에서 방을 선택해 주세요." });
-  }
-}
-
-function goHome() {
-  document.getElementById("homeNickname").textContent = `닉네임: ${state.nickname}`;
-  // 방 생성/정리는 관리자만 — 비관리자에겐 숨기고 안내 표시
-  const admin = isAdmin();
-  const createBtn = document.getElementById("btnCreateRoom");
-  const cleanupBtn = document.getElementById("btnCleanup");
-  const note = document.getElementById("adminNote");
-  if (createBtn) createBtn.classList.toggle("hidden", !admin);
-  if (cleanupBtn) cleanupBtn.classList.toggle("hidden", !admin);
-  if (note) note.classList.toggle("hidden", admin);
-  ui.showScreen("screen-home");
-}
-
-// ----- 방 코드 생성 (헷갈리는 문자 제외) -----
-function genRoomCode() {
-  const chars = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
-  let code = "";
-  for (let i = 0; i < 6; i++) {
-    code += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return code;
+  enterRoom(MAIN_ROOM);
 }
 
 function newPlayer(nickname) {
@@ -268,215 +174,40 @@ function newPlayer(nickname) {
   };
 }
 
-// ----- 방 만들기 (관리자 전용) -----
-async function createRoom() {
-  ui.setMsg("homeMsg", "");
-  if (!isAdmin()) {
-    ui.setMsg("homeMsg", "방 생성은 관리자만 가능합니다. 방 코드로 입장하세요.");
-    return;
-  }
+// ----- 단일 방 자동 등록 -----
+// 방 코드/생성/대기실/late-join 승인 절차가 없다. 시장이 진행 중이면 누구나 즉시 참여한다.
+// 처음 들어온 플레이어는 players/{uid} 가 자동 생성되고 시작 자본을 받는다.
+let joiningRoom = false;
+async function ensureJoined(room) {
+  if (!state.uid) return false;
+  if (room.players && room.players[state.uid]) return true; // 이미 참가자
+  if (joiningRoom) return false;
+  joiningRoom = true;
+  const initialCash = Number(room.settings?.initialCash) || game.START_CASH;
+  const now = Date.now();
   try {
-    const code = genRoomCode();
-    await set(ref(db, `rooms/${code}`), {
-      status: "waiting",
-      hostId: state.uid,
-      createdAt: serverTimestamp(),
-      players: { [state.uid]: newPlayer(state.nickname) },
-    });
-    enterRoom(code);
-  } catch (e) {
-    console.error(e);
-    ui.setMsg("homeMsg", "방 생성 실패: " + e.message);
-  }
-}
-
-// ----- 방 코드로 입장 -----
-async function joinRoom(codeRaw) {
-  ui.setMsg("homeMsg", "");
-  const code = (codeRaw || "").trim().toUpperCase();
-  if (code.length !== 6) {
-    ui.setMsg("homeMsg", "방 코드 6자리를 입력하세요.");
-    return;
-  }
-  try {
-    const snap = await get(ref(db, `rooms/${code}`));
-    if (!snap.exists()) {
-      ui.setMsg("homeMsg", "존재하지 않는 방입니다.");
-      return;
-    }
-    const room = snap.val();
-    const status = room.status || "waiting"; // status 없으면 호환 위해 waiting 취급
-    const alreadyIn = !!room.players?.[state.uid];
-
-    // 기존 플레이어는 승인 없이 재입장
-    if (alreadyIn) {
-      ui.showToast("기존 플레이어로 재입장합니다.");
-      enterRoom(code);
-      return;
-    }
-    // 종료된 방은 신청 불가
-    if (isClosedStatus(status)) {
-      ui.setMsg("homeMsg", "종료된 방은 참여 신청을 할 수 없습니다.");
-      return;
-    }
-    // 대기 중 방: 기존 규칙대로 즉시 참여 (정원 6명 트랜잭션)
-    if (status === "waiting") {
-      const result = await runTransaction(
-        ref(db, `rooms/${code}/players`),
-        (players) => {
-          players = players || {};
-          if (players[state.uid]) return players;
-          if (Object.keys(players).length >= game.MAX_PLAYERS) return; // 중단
-          players[state.uid] = {
-            nickname: state.nickname,
-            cash: 0,
-            totalAsset: 0,
-            joinedAt: Date.now(),
-            connected: true,
-          };
-          return players;
-        }
-      );
-      if (!result.committed) {
-        ui.setMsg("homeMsg", "방이 가득 찼습니다. (최대 6명)");
-        return;
-      }
-      enterRoom(code);
-      return;
-    }
-    // 진행 중(playing/active/running) 또는 미상 상태 → 관리자 승인제 중간 참여
-    await requestLateJoin(code, room);
-  } catch (e) {
-    console.error(e);
-    ui.setMsg("homeMsg", "입장 실패: " + e.message);
-  }
-}
-
-// ----- 중간 참여(late-join) 신청 + 승인 대기 -----
-// 진행 중인 방에 새 플레이어가 들어오면 즉시 players 를 만들지 않고
-// rooms/{code}/joinRequests/{requestId} 에 pending 신청만 만든다.
-// admin 이 status 를 approved 로 바꾸면, 이 클라이언트가 그걸 감지해
-// players/{uid} 를 부분 update 로 생성하고 입장한다. (전체 set 금지)
-async function requestLateJoin(code, room) {
-  const requests = room.joinRequests || {};
-  // 같은 uid 의 기존 신청 재사용 (중복 생성 방지)
-  const existing = Object.entries(requests)
-    .map(([id, r]) => ({ id, ...r }))
-    .filter((r) => r.uid === state.uid)
-    .sort((a, b) => (b.requestedAt || 0) - (a.requestedAt || 0))[0];
-
-  if (existing) {
-    if (existing.status === "approved") {
-      await finalizeLateJoin(code, existing.id, existing);
-      return;
-    }
-    if (existing.status === "joined") {
-      enterRoom(code);
-      return;
-    }
-    if (existing.status === "pending") {
-      ui.setMsg("homeMsg", "이미 참여 신청이 대기 중입니다. 관리자의 승인을 기다려주세요.", false);
-      watchJoinRequest(code, existing.id);
-      return;
-    }
-    if (existing.status === "rejected") {
-      ui.setMsg("homeMsg", "참여가 거절되었습니다. 다시 신청하려면 잠시 후 시도하세요.");
-      // 거절 후 재신청 허용 — 아래에서 새 신청 생성
-    }
-  }
-
-  // 새 신청 생성 (joinRequests/{requestId} 만 set — 전체 roomData 건드리지 않음)
-  const requestId = push(ref(db, `rooms/${code}/joinRequests`)).key;
-  const reqData = {
-    id: requestId,
-    roomCode: code,
-    playerId: state.uid,
-    uid: state.uid,
-    name: state.nickname,
-    requestedAt: Date.now(),
-    status: "pending",
-    type: "lateJoin",
-    requestedTurn: room.marketTick || null,
-    approvedAt: null,
-    approvedBy: null,
-    rejectedAt: null,
-    rejectedBy: null,
-    joinedAt: null,
-    message: "",
-  };
-  try {
-    await set(ref(db, `rooms/${code}/joinRequests/${requestId}`), reqData);
-    ui.setMsg("homeMsg", "진행 중인 방입니다. 참여 신청을 보냈습니다. 관리자의 승인을 기다려주세요.", false);
-    ui.showToast("참여 신청을 보냈습니다. 승인을 기다려주세요.");
-    watchJoinRequest(code, requestId);
-  } catch (e) {
-    console.error("[lateJoin] 신청 실패:", e);
-    ui.setMsg("homeMsg", "참여 신청 실패: " + e.message);
-  }
-}
-
-// 신청 상태 구독 — approved 면 입장, rejected 면 안내. (단일 노드 구독 → 사용량 최소)
-function watchJoinRequest(code, requestId) {
-  if (state.joinReqRef) { off(state.joinReqRef); state.joinReqRef = null; }
-  state.joinReqId = requestId;
-  state.joinReqRef = ref(db, `rooms/${code}/joinRequests/${requestId}`);
-  onValue(state.joinReqRef, async (snap) => {
-    const r = snap.val();
-    if (!r) return;
-    if (r.status === "approved") {
-      stopWatchingJoinRequest();
-      await finalizeLateJoin(code, requestId, r);
-    } else if (r.status === "rejected") {
-      stopWatchingJoinRequest();
-      ui.setMsg("homeMsg", "참여가 거절되었습니다.");
-      ui.showToast("참여가 거절되었습니다.", "err");
-    }
-  }, (e) => console.warn("[lateJoin] 구독 오류:", e));
-}
-
-function stopWatchingJoinRequest() {
-  if (state.joinReqRef) { off(state.joinReqRef); state.joinReqRef = null; }
-  state.joinReqId = null;
-}
-
-// 승인 확인 후 입장 — players/{uid} 생성 + 신청 joined 처리 (부분 update만)
-async function finalizeLateJoin(code, requestId, reqData) {
-  try {
-    // 최신 방 데이터로 초기 자금/정원 확인 (1회 읽기)
-    const snap = await get(ref(db, `rooms/${code}`));
-    const room = snap.val();
-    if (!room) { ui.setMsg("homeMsg", "방을 찾을 수 없습니다."); return; }
-    // 이미 players 에 있으면(재확인) 그대로 입장
-    if (room.players?.[state.uid]) {
-      stopWatchingJoinRequest();
-      ui.showToast("참여가 승인되었습니다. 입장합니다.");
-      enterRoom(code);
-      return;
-    }
-    const initialCash = Number(room.settings?.initialCash) || game.START_CASH;
-    const now = Date.now();
-    // 부분 update: players/{uid}, joinRequests/{requestId} 필드만 — 전체 set 금지
-    const updates = {};
-    updates[`players/${state.uid}`] = {
+    // players/{uid} 만 부분 생성 (전체 set 금지) — 시작 자본 지급
+    await update(ref(db, `rooms/${MAIN_ROOM}/players/${state.uid}`), {
       nickname: state.nickname,
       cash: initialCash,
       holdings: null,
       totalAsset: initialCash,
       joinedAt: now,
       connected: true,
-      lateJoin: true,
-      joinedTurn: reqData.requestedTurn || room.marketTick || null,
-    };
-    updates[`joinRequests/${requestId}/status`] = "joined";
-    updates[`joinRequests/${requestId}/joinedAt`] = now;
-    updates[`meta/updatedAt`] = now;
-    await update(ref(db, `rooms/${code}`), updates);
-    ui.showToast("참여가 승인되었습니다. 입장합니다.", "up");
-    enterRoom(code);
+    });
   } catch (e) {
-    console.error("[lateJoin] 입장 실패:", e);
-    ui.setMsg("homeMsg", "승인 후 입장 실패: " + e.message);
+    console.warn("[join] 자동 등록 실패:", e);
+    return false;
+  } finally {
+    joiningRoom = false;
   }
+  return true; // 등록 직후 다음 onValue 스냅샷에서 참가자로 반영됨
+}
+
+// late-join 승인 대기 구독은 더 이상 쓰지 않지만, 호출부 호환을 위해 정리 함수만 남긴다.
+function stopWatchingJoinRequest() {
+  if (state.joinReqRef) { off(state.joinReqRef); state.joinReqRef = null; }
+  state.joinReqId = null;
 }
 
 // ----- 방 입장 후 실시간 구독 -----
@@ -633,26 +364,31 @@ function bindHoverPreview(listId) {
   });
 }
 
-// ----- 방 데이터 변경 시 화면 갱신 -----
+// ----- 방 데이터 변경 시 화면 갱신 (단일 방 운영) -----
 function onRoomUpdate(room) {
+  // 방이 아직 없음(관리자가 시장을 한 번도 시작하지 않음) → 준비 중 안내
   if (!room) {
-    // 방이 삭제됨
-    leaveToHome("방이 삭제되었습니다.");
+    stopDriving(); stopDriverWatch(); stopClock();
+    state.roomData = null;
+    state.lastStatus = null;
+    showMarketWait();
     return;
   }
   state.roomData = room;
   attachSelectedHistory(room); // 가벼운 방에 선택 종목 history 재부착(차트용)
 
-  // 착용한 배경화면(스킨) 적용: rooms/{code}/players/{uid}/equippedBackground
+  // 착용한 배경화면(스킨) 적용
   applyEquippedBackground(room.players && state.uid && room.players[state.uid] ? room.players[state.uid].equippedBackground : null);
 
-  if (room.status === "waiting") {
-    ui.showScreen("screen-lobby");
-    ui.renderLobby(state.roomCode, room, state.uid);
-  } else if (room.status === "playing") {
+  if (room.status === "playing") {
+    // 단일 방: 시장이 열려 있으면 누구나 즉시 참여 — 아직 참가자가 아니면 자동 등록 후 다음 스냅샷 대기
+    if (state.uid && !(room.players && room.players[state.uid])) {
+      void ensureJoined(room);
+      return;
+    }
     if (state.lastStatus !== "playing") {
       ui.showScreen("screen-game");
-      ui.resetLocalHistory(); // 새 게임 시작 시 로컬 차트 기록 초기화
+      ui.resetLocalHistory(); // 새 시장 시작 시 로컬 차트 기록 초기화
       startClock();
       // 첫 종목 자동 선택
       const ids = Object.keys(room.stocks || {});
@@ -661,23 +397,28 @@ function onRoomUpdate(room) {
     // 선택 종목이 바뀌었으면(자동 선택 포함) 그 종목 history 만 구독 — 동일 id 면 no-op
     if (state.selectedStockId !== state.histStockId) subscribeSelectedHistory(state.selectedStockId);
     scheduleRender();
-    // 방장에게만 '게임 종료' 버튼 노출
-    document.getElementById("btnEndGame").classList.toggle("hidden", room.hostId !== state.uid);
     // 방 로드 시 1회: 사람이 없던 시간(경과)을 보정 (중복은 lock 으로 방지)
     void maybeCatchUp(room);
-    // 드라이버 결정: 방장 우선, 부재 시 접속 중인 다른 플레이어가 인수
+    // 드라이버 결정: 접속 중인 플레이어 중 한 명이 시장 진행을 맡음
     void ensureMarketDriver(room);
-    startDriverWatch(); // DB 변화가 없어도 방장 부재를 감지하도록 폴링 시작
-  } else if (room.status === "ended") {
+    startDriverWatch();
+  } else {
+    // playing 이 아닌 모든 상태(waiting/ended/미정) → 시장 준비 중 안내. 일반 이용자는 시장을 시작/종료할 수 없음.
     stopDriving();
     stopDriverWatch();
     stopClock();
-    subscribeSelectedHistory(null); // 선택 종목 history 구독 해제
+    subscribeSelectedHistory(null);
     ui.destroyChart();
-    ui.showScreen("screen-result");
-    ui.renderResult(room, state.uid);
+    showMarketWait();
   }
   state.lastStatus = room.status;
+}
+
+// 시장이 아직 열리지 않았을 때(방 없음/대기/종료) 보여줄 안내. (관리자가 STONK Admin에서 시장을 시작)
+function showMarketWait() {
+  ui.showScreen("screen-wait");
+  const nick = document.getElementById("waitNickname");
+  if (nick) nick.textContent = state.nickname ? `${state.nickname} 님` : "";
 }
 
 // ----- 방 로드 시 경과 보정 (battle 이 1차 보정 주체) -----
@@ -831,45 +572,27 @@ function stopClock() {
   }
 }
 
-// ----- 방 나가기 -----
-async function leaveRoom() {
-  const { roomCode, roomData } = state;
-  try {
-    if (roomCode && roomData?.status === "waiting") {
-      // 대기 중이면 플레이어 목록에서 제거 (방장이 나가면 방 삭제)
-      if (roomData.hostId === state.uid) {
-        await remove(ref(db, `rooms/${roomCode}`));
-      } else {
-        await remove(ref(db, `rooms/${roomCode}/players/${state.uid}`));
-      }
-    }
-  } catch (e) {
-    console.warn(e);
-  }
-  leaveToHome();
+// ----- 나가기: STONK Home 사이트로 이동 (방 종료/삭제 아님 — 단일 방은 계속 운영됨) -----
+function leaveRoom() {
+  goToStonkHome();
 }
 
-function leaveToHome(msg) {
+// 내 드라이버 리스/구독만 정리하고 STONK Home 으로 이동한다.
+function goToStonkHome() {
   releaseTickLeaseIfMine(); // 내가 드라이버였다면 리스를 즉시 비워 다른 유저가 바로 인수
   stopDriving();
   stopDriverWatch();
   stopClock();
   stopWatchingJoinRequest();
   ui.destroyChart();
-  if (state.roomRef) {
-    off(state.roomRef);
-    state.roomRef = null;
-  }
-  subscribeSelectedHistory(null); // 선택 종목 history 구독 해제 + 상태 초기화
-  state.roomCode = null;
-  state.roomData = null;
-  state.selectedStockId = null;
-  state.lastStatus = null;
-  state.catchupDoneFor = null;
-  state.liveState = history.createLiveState();
-  localStorage.removeItem("mb_roomCode");
-  goHome();
-  if (msg) ui.setMsg("homeMsg", msg, false);
+  if (state.roomRef) { off(state.roomRef); state.roomRef = null; }
+  subscribeSelectedHistory(null);
+  location.href = site.buildHomeUrl();
+}
+
+// 호환용: 예전 호출부(leaveToHome)는 STONK Home 으로 안내한다.
+function leaveToHome() {
+  goToStonkHome();
 }
 
 // ----- 사이트 간 이동 링크(roomCode 유지) 갱신 -----
@@ -880,18 +603,6 @@ function updateSiteNav(code) {
   setHref("navBoard", site.buildBoardUrl(code));
   setHref("navWiki", site.buildWikiUrl(code, company));
   setHref("navAdmin", site.buildAdminUrl(code));
-}
-
-// ----- 클립보드 복사 -----
-async function copyRoomCode() {
-  if (!state.roomCode) return;
-  try {
-    await navigator.clipboard.writeText(state.roomCode);
-    alert("방 코드가 복사되었습니다: " + state.roomCode);
-  } catch {
-    // 클립보드 API 미지원 시 fallback
-    prompt("아래 방 코드를 복사하세요:", state.roomCode);
-  }
 }
 
 async function copyMarketBoardSnapshot() {
@@ -1051,81 +762,26 @@ async function doApplyIpo() {
 
 // ----- 이벤트 바인딩 -----
 function bindEvents() {
-  // 이메일/비밀번호 로그인
-  document.getElementById("btnLogin").addEventListener("click", () => doAuth("login"));
-  document.getElementById("btnSignup").addEventListener("click", () => doAuth("signup"));
-  document.getElementById("passwordInput").addEventListener("keydown", (e) => {
-    if (e.key === "Enter") doAuth("login");
-  });
-
-  // 닉네임 입력
-  document.getElementById("btnNickname").addEventListener("click", () => {
+  // 닉네임 입력 (Home 에서 닉네임이 넘어오면 이 화면은 건너뜀)
+  document.getElementById("btnNickname")?.addEventListener("click", () => {
     const nick = document.getElementById("nicknameInput").value.trim();
     if (!nick) return;
     state.nickname = nick;
     localStorage.setItem("mb_nickname", nick);
-    goHome();
+    enterRoom(MAIN_ROOM);
   });
-  document.getElementById("nicknameInput").addEventListener("keydown", (e) => {
+  document.getElementById("nicknameInput")?.addEventListener("keydown", (e) => {
     if (e.key === "Enter") document.getElementById("btnNickname").click();
   });
 
-  // 홈
-  document.getElementById("btnCreateRoom").addEventListener("click", createRoom);
-  document.getElementById("btnJoinRoom").addEventListener("click", () => {
-    joinRoom(document.getElementById("roomCodeInput").value);
-  });
-  document.getElementById("roomCodeInput").addEventListener("keydown", (e) => {
-    if (e.key === "Enter") document.getElementById("btnJoinRoom").click();
-  });
-  document.getElementById("btnChangeNick").addEventListener("click", () => {
-    ui.showScreen("screen-auth");
-  });
-  document.getElementById("btnLogout").addEventListener("click", async () => {
-    localStorage.removeItem("mb_roomCode");
-    try {
-      await signOut(auth); // onAuthStateChanged 가 로그인 화면으로 이동시킴
-    } catch (e) {
-      console.error("[auth] 로그아웃 실패:", e);
-    }
-  });
-  document.getElementById("btnCleanup").addEventListener("click", async () => {
-    if (!isAdmin()) { ui.setMsg("homeMsg", "권한이 없습니다."); return; }
-    ui.setMsg("homeMsg", "정리 중...", false);
-    try {
-      const n = await game.cleanupOldRooms();
-      ui.setMsg("homeMsg", `오래된 방 ${n}개를 정리했습니다.`, false);
-    } catch (e) {
-      ui.setMsg("homeMsg", "정리 실패: " + e.message);
-    }
-  });
+  // 시장 준비 중 안내 화면: STONK Home 으로
+  document.getElementById("btnWaitHome")?.addEventListener("click", goToStonkHome);
 
-  // 대기실
-  document.getElementById("btnCopyCode").addEventListener("click", copyRoomCode);
-  document.getElementById("btnCopyCode2").addEventListener("click", copyRoomCode);
-  document.getElementById("btnCopyMarketBoard").addEventListener("click", copyMarketBoardSnapshot);
-  document.getElementById("btnLeaveRoom").addEventListener("click", leaveRoom);
-  // 게임 중 나가기 (홈으로 돌아가기 — 방은 유지)
-  document.getElementById("btnLeaveGame").addEventListener("click", () => {
-    if (confirm("게임에서 나가시겠습니까? 홈으로 돌아갑니다.")) leaveToHome();
-  });
-  // 방장: 게임 종료 → 결과 화면
-  document.getElementById("btnEndGame").addEventListener("click", async () => {
-    if (!confirm("게임을 종료하고 최종 순위를 발표할까요?")) return;
-    try {
-      stopDriving();
-      await game.endGame(state.roomCode, state.roomData);
-    } catch (e) {
-      ui.showToast("종료 실패: " + e.message, "err");
-    }
-  });
-  document.getElementById("btnStartGame").addEventListener("click", async () => {
-    try {
-      await game.startGame(state.roomCode, state.roomData);
-    } catch (e) {
-      ui.setMsg("lobbyMsg", e.message);
-    }
-  });
+  // 상단: 포털(Board)로 시장 데이터 복사 · 나가기
+  document.getElementById("btnCopyCode2")?.addEventListener("click", copyMarketBoardSnapshot);
+  document.getElementById("btnCopyMarketBoard")?.addEventListener("click", copyMarketBoardSnapshot);
+  // 게임 중 나가기 → STONK Home (방은 계속 운영됨)
+  document.getElementById("btnLeaveGame")?.addEventListener("click", goToStonkHome);
 
   // 게임: 종목 선택 (이벤트 위임) — 별 토글은 별도 처리
   // 홈 랭킹표 + 스크리너 표: 관심 토글 / 행 클릭 → 종목 상세
@@ -1305,8 +961,8 @@ function bindEvents() {
     });
   }
 
-  // 결과 → 홈
-  document.getElementById("btnBackHome").addEventListener("click", () => leaveToHome());
+  // 결과 → 홈 (결과 화면은 단일 방에선 거의 쓰이지 않지만 버튼이 있으면 STONK Home 으로)
+  document.getElementById("btnBackHome")?.addEventListener("click", goToStonkHome);
 }
 
 bindEvents();
