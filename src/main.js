@@ -122,7 +122,8 @@ function boot() {
 
 let reloadBaseline = null; // 구독 시작 시점에 본 reloadAt(이 값보다 커지면 새로고침)
 function watchForceReload() {
-  onValue(ref(db, "broadcast/reloadAt"), (snap) => {
+  // 단일 방 운영: 신호를 rooms/MAIN 아래에 둔다(루트 broadcast 는 보안 규칙상 쓰기 거부됨).
+  onValue(ref(db, `rooms/${MAIN_ROOM}/broadcast/reloadAt`), (snap) => {
     const at = Number(snap.val()) || 0;
     if (reloadBaseline === null) { reloadBaseline = at; return; } // 첫 스냅샷 = 기준값
     if (at > reloadBaseline) {
