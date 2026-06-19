@@ -65,7 +65,12 @@ const state = {
   joinReqId: null,
   // 관리자 페이지 링크 노출 여부 (/admins/{uid}=true)
   isDbAdmin: false,
+  // STONK 금고(영구 계좌) — rooms 밖. 시장 리셋과 무관하게 보존.
+  bank: 0,
+  bankRef: null,
 };
+
+const BANK_FEE = 0.05; // 채우기/환전 수수료 5%
 
 // ----- 시장 드라이버(failover) 설정 -----
 // 한 방의 시장 진행(틱)은 항상 "드라이버" 한 명만 수행한다(중복 쓰기 방지 = Firebase 사용량 유지).
@@ -252,6 +257,19 @@ function enterRoom(code) {
   onValue(state.roomRef, (snap) => onRoomUpdate(snapToRoom(snap)), (e) => {
     console.error("[room] 구독 오류:", e);
   });
+  subscribeBank();
+}
+
+// STONK 금고(영구 계좌) 잔액 구독 — rooms 밖이라 시장 리셋과 무관하게 유지된다.
+function subscribeBank() {
+  if (!state.uid) return;
+  if (state.bankRef) off(state.bankRef);
+  state.bankRef = ref(db, `accounts/${state.uid}/balance`);
+  onValue(state.bankRef, (snap) => {
+    state.bank = Number(snap.val() || 0);
+    ui.setBankBalance(state.bank);
+    scheduleRender();
+  }, () => {});
 }
 
 // 방 스냅샷 → 렌더용 가벼운 객체(각 종목의 history 서브트리는 .val() 하지 않아 비용 0).
@@ -854,6 +872,43 @@ async function inlineTrade(stockId, kind, qty) {
   } catch (e) { ui.showToast(e.message, "err"); }
 }
 
+// ----- STONK 금고 ↔ 시장 현금 (채우기/환전, 수수료 5%) -----
+const won = (n) => Math.round(Number(n) || 0).toLocaleString("ko-KR");
+async function doExchange() { // 환전(빼오기): 시장 현금 → 금고
+  const { roomCode, roomData, uid } = state;
+  if (!roomData || !uid) return;
+  const cash = roomData.players?.[uid]?.cash || 0;
+  if (cash < 1) { ui.showToast("환전할 현금이 없습니다", "err"); return; }
+  const input = prompt(`환전(빼오기): 시장 현금을 금고로 옮깁니다. 수수료 ${BANK_FEE * 100}%\n보유 현금 ${won(cash)}원\n옮길 금액을 입력하세요:`, String(cash));
+  if (input === null) return;
+  const amt = Math.floor(Number(input) || 0);
+  if (!amt || amt < 1) { ui.showToast("금액을 확인하세요", "err"); return; }
+  try {
+    const res = await runTransaction(ref(db, `rooms/${roomCode}/players/${uid}/cash`), (c) => { c = Number(c) || 0; if (c < amt) return; return c - amt; });
+    if (!res.committed) { ui.showToast("현금이 부족합니다", "err"); return; }
+    const credit = Math.floor(amt * (1 - BANK_FEE));
+    await runTransaction(ref(db, `accounts/${uid}/balance`), (b) => (Number(b) || 0) + credit);
+    ui.showToast(`금고로 ${won(credit)}원 환전 완료 (수수료 ${won(amt - credit)}원)`, "up");
+  } catch (e) { ui.showToast("환전 실패: " + e.message, "err"); }
+}
+async function doFill() { // 채우기: 금고 → 시장 현금
+  const { roomCode, uid } = state;
+  if (!uid) return;
+  const bal = state.bank || 0;
+  if (bal < 1) { ui.showToast("금고 잔액이 없습니다. 먼저 환전(빼오기) 하세요", "err"); return; }
+  const input = prompt(`채우기: 금고 잔액을 시장 현금으로 넣습니다. 수수료 ${BANK_FEE * 100}%\n금고 잔액 ${won(bal)}원\n넣을 금액을 입력하세요:`, String(bal));
+  if (input === null) return;
+  const amt = Math.floor(Number(input) || 0);
+  if (!amt || amt < 1) { ui.showToast("금액을 확인하세요", "err"); return; }
+  try {
+    const res = await runTransaction(ref(db, `accounts/${uid}/balance`), (b) => { b = Number(b) || 0; if (b < amt) return; return b - amt; });
+    if (!res.committed) { ui.showToast("금고 잔액이 부족합니다", "err"); return; }
+    const credit = Math.floor(amt * (1 - BANK_FEE));
+    await runTransaction(ref(db, `rooms/${roomCode}/players/${uid}/cash`), (c) => (Number(c) || 0) + credit);
+    ui.showToast(`시장 현금 ${won(credit)}원 충전 완료 (수수료 ${won(amt - credit)}원)`, "up");
+  } catch (e) { ui.showToast("채우기 실패: " + e.message, "err"); }
+}
+
 // ----- 이벤트 바인딩 -----
 function bindEvents() {
   // 상단 계좌 칩(아바타) 클릭 → 닉네임 변경
@@ -989,6 +1044,14 @@ function bindEvents() {
     if (b) { ui.setScreenerPreset(b.dataset.preset); scheduleRender(); }
   });
   document.getElementById("accountView")?.addEventListener("click", (e) => {
+    const act = e.target.closest("[data-acctact]");
+    if (act) {
+      const a = act.dataset.acctact;
+      if (a === "fill") doFill();
+      else if (a === "exchange") doExchange();
+      else if (a === "send") goToStonkHome(); // 보내기는 STONK Home 금고에서
+      return;
+    }
     const b = e.target.closest("[data-acct]");
     if (b) { ui.setAcctSection(b.dataset.acct); scheduleRender(); }
   });

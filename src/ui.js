@@ -928,6 +928,8 @@ function orderRow(price, qty, side, maxQ, base) {
 
 let expandedHoldId = null; // 인라인 매수/매도 카드를 펼친 보유종목 id
 let holdQtyVal = 1;        // 인라인 카드 수량 (재렌더에도 유지)
+let bankBalance = 0;       // STONK 금고(영구 계좌) 잔액 — main.js 가 setBankBalance 로 주입
+export function setBankBalance(v) { bankBalance = Number(v) || 0; }
 function renderPortfolio(room, uid) {
   const me = room.players?.[uid];
   const stocks = room.stocks || {};
@@ -1317,9 +1319,10 @@ function renderAccount(room, uid) {
         <div class="ah-no">기본계좌 · ${esc(code)}</div>
         <div class="ah-asset">${fmt(total)}</div>
         <div class="ah-pnl ${plCls}">평가손익 ${pl >= 0 ? "+" : ""}${fmtNum(pl)}원 (${plPct >= 0 ? "+" : ""}${plPct.toFixed(2)}%)</div>
-        <div class="acct-actions"><button class="btn small" disabled>채우기</button><button class="btn small" disabled>보내기</button><button class="btn small" disabled>환전</button></div>
+        <div class="acct-actions"><button class="btn small" data-acctact="fill">채우기</button><button class="btn small" data-acctact="send">보내기</button><button class="btn small" data-acctact="exchange">환전(빼오기)</button></div>
       </div>
       <div class="acct-grid">
+        <div class="acct-stat"><div class="as-k">🏦 STONK 금고(영구)</div><div class="as-v">${fmt(bankBalance)}</div></div>
         <div class="acct-stat"><div class="as-k">주문가능 현금</div><div class="as-v">${fmt(me.cash)}</div></div>
         <div class="acct-stat"><div class="as-k">총 투자금액(평가)</div><div class="as-v">${fmt(invest)}</div></div>
         <div class="acct-stat"><div class="as-k">평가손익</div><div class="as-v ${plCls}">${pl >= 0 ? "+" : ""}${fmtNum(pl)}</div></div>
