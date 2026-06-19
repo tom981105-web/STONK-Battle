@@ -264,7 +264,9 @@ function enterRoom(code) {
 function subscribeBank() {
   if (!state.uid) return;
   if (state.bankRef) off(state.bankRef);
-  state.bankRef = ref(db, `accounts/${state.uid}/balance`);
+  state.bankRef = ref(db, `rooms/${MAIN_ROOM}/bank/${state.uid}/balance`);
+  // Home 친구 검색용으로 닉네임을 은행 노드에 기록(시장 리셋에도 보존됨)
+  update(ref(db, `rooms/${MAIN_ROOM}/bank/${state.uid}`), { nickname: state.nickname || ("플레이어-" + String(state.uid).slice(-4)) }).catch(() => {});
   onValue(state.bankRef, (snap) => {
     state.bank = Number(snap.val() || 0);
     ui.setBankBalance(state.bank);
@@ -887,7 +889,7 @@ async function doExchange() { // 환전(빼오기): 시장 현금 → 금고
     const res = await runTransaction(ref(db, `rooms/${roomCode}/players/${uid}/cash`), (c) => { c = Number(c) || 0; if (c < amt) return; return c - amt; });
     if (!res.committed) { ui.showToast("현금이 부족합니다", "err"); return; }
     const credit = Math.floor(amt * (1 - BANK_FEE));
-    await runTransaction(ref(db, `accounts/${uid}/balance`), (b) => (Number(b) || 0) + credit);
+    await runTransaction(ref(db, `rooms/${roomCode}/bank/${uid}/balance`), (b) => (Number(b) || 0) + credit);
     ui.showToast(`금고로 ${won(credit)}원 환전 완료 (수수료 ${won(amt - credit)}원)`, "up");
   } catch (e) { ui.showToast("환전 실패: " + e.message, "err"); }
 }
@@ -901,7 +903,7 @@ async function doFill() { // 채우기: 금고 → 시장 현금
   const amt = Math.floor(Number(input) || 0);
   if (!amt || amt < 1) { ui.showToast("금액을 확인하세요", "err"); return; }
   try {
-    const res = await runTransaction(ref(db, `accounts/${uid}/balance`), (b) => { b = Number(b) || 0; if (b < amt) return; return b - amt; });
+    const res = await runTransaction(ref(db, `rooms/${roomCode}/bank/${uid}/balance`), (b) => { b = Number(b) || 0; if (b < amt) return; return b - amt; });
     if (!res.committed) { ui.showToast("금고 잔액이 부족합니다", "err"); return; }
     const credit = Math.floor(amt * (1 - BANK_FEE));
     await runTransaction(ref(db, `rooms/${roomCode}/players/${uid}/cash`), (c) => (Number(c) || 0) + credit);
