@@ -284,8 +284,16 @@ select option { background: var(--card); color: var(--text); }
 @keyframes livePulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .35; transform: scale(.7); } }
 
 /* ---- 홈: 지수 스트립 ---- */
-.index-strip { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(150px, 1fr); gap: 10px; overflow-x: auto; padding-bottom: 4px; }
+/* STONK 종합(1) + 업종 8개씩 2카드 → 가로 스크롤 없이 한 줄 3카드 */
+.index-strip { display: grid; grid-template-columns: 1.1fr 1fr 1fr; gap: 10px; align-items: stretch; }
 .index-card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+/* 업종 리스트 카드: 8개 업종을 컴팩트 행으로 */
+.index-sectors { gap: 0; justify-content: center; }
+.ixs-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: baseline; gap: 10px; padding: 4px 0; border-bottom: 1px solid var(--border2); font-variant-numeric: tabular-nums; }
+.ixs-row:last-child { border-bottom: none; }
+.ixs-name { font-size: 12.5px; font-weight: 700; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ixs-val { font-size: 12.5px; font-weight: 800; }
+.ixs-rate { font-size: 12px; font-weight: 800; min-width: 70px; text-align: right; }
 .index-card .ix-name { font-size: 12.5px; color: var(--text2); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .index-card .ix-val { font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .index-card .ix-rate { font-size: 12.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
@@ -626,7 +634,15 @@ select option { background: var(--card); color: var(--text); }
   .stk-ico { width: 28px; height: 28px; font-size: 12px; }
   .tag { display: none; }                  /* 행 안 배지는 모바일에서 숨겨 이름 줄바꿈 방지 */
 
-  .index-strip { grid-auto-columns: minmax(132px, 1fr); }
+  /* 모바일: 종합 카드는 한 줄, 업종 2카드는 그 아래 좌우로.
+     좁아서 업종명이 잘리므로 지수값은 숨기고 이름+등락률만 보인다. */
+  .index-strip { grid-template-columns: 1fr 1fr; }
+  .index-comp { grid-column: 1 / -1; }
+  .index-sectors { padding: 10px 12px; }
+  .ixs-row { grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
+  .ixs-val { display: none; }
+  .ixs-name { font-size: 12.5px; }
+  .ixs-rate { min-width: 58px; font-size: 11.5px; }
 
   /* ===== 상세(거래) 화면: 세로 스택 + 큰 터치 영역 ===== */
   .big-price { font-size: 26px; }

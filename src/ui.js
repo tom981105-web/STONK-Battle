@@ -1136,17 +1136,29 @@ function sparkSvg(arr, rate) {
   const col = rate >= 0 ? "var(--up)" : "var(--down)";
   return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><polyline points="${pts}" fill="none" stroke="${col}" stroke-width="1.6" stroke-linejoin="round"/></svg>`;
 }
-function indexCardHtml(name, val, rate, hist) {
+function indexCardHtml(name, val, rate, hist, extraClass = "") {
   const cls = dirClass(rate), sign = rate > 0 ? "+" : "";
-  return `<div class="index-card"><span class="ix-name">${esc(name)}</span><span class="ix-val">${val.toFixed(2)}</span><span class="ix-rate ${cls}">${arrow(rate)} ${sign}${rate.toFixed(2)}%</span><div class="ix-spark">${sparkSvg(hist, rate)}</div></div>`;
+  return `<div class="index-card ${extraClass}"><span class="ix-name">${esc(name)}</span><span class="ix-val">${val.toFixed(2)}</span><span class="ix-rate ${cls}">${arrow(rate)} ${sign}${rate.toFixed(2)}%</span><div class="ix-spark">${sparkSvg(hist, rate)}</div></div>`;
+}
+// 업종 한 줄(이름 · 지수값 · 등락률) — 한 카드에 여러 업종을 담기 위한 컴팩트 행
+function sectorRowHtml(s) {
+  const rate = s.rate, cls = dirClass(rate), sign = rate > 0 ? "+" : "";
+  const val = (1000 * (1 + rate / 100)).toFixed(2);
+  return `<div class="ixs-row"><span class="ixs-name">${esc(s.name)}</span><span class="ixs-val">${val}</span><span class="ixs-rate ${cls}">${arrow(rate)} ${sign}${rate.toFixed(2)}%</span></div>`;
 }
 function renderIndexStrip(room) {
   const el = $("indexStrip");
   if (!el) return;
   const { comp, sectors } = computeIndices(room.stocks || {});
-  const cards = [indexCardHtml("STONK 종합", 1000 * (1 + comp / 100), comp, indexHistory["__comp__"])];
-  sectors.slice(0, 6).forEach((s) => cards.push(indexCardHtml(s.name, 1000 * (1 + s.rate / 100), s.rate, indexHistory["sec:" + s.name])));
-  el.innerHTML = cards.join("");
+  // STONK 종합 1카드 + 나머지 업종을 8개씩 2카드로 (가로 스크롤 없이 한눈에)
+  const top = sectors.slice(0, 16);
+  const g1 = top.slice(0, 8), g2 = top.slice(8, 16);
+  const html = [
+    indexCardHtml("STONK 종합", 1000 * (1 + comp / 100), comp, indexHistory["__comp__"], "index-comp"),
+    `<div class="index-card index-sectors">${g1.map(sectorRowHtml).join("")}</div>`,
+    g2.length ? `<div class="index-card index-sectors">${g2.map(sectorRowHtml).join("")}</div>` : "",
+  ];
+  el.innerHTML = html.join("");
 }
 
 /* ===================== 토스 탭: 피드 ===================== */
