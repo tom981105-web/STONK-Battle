@@ -82,6 +82,12 @@ const SECTORS = [
   { key: "steel", name: "철강·중공업", leader: "고래물산", suffixes: ["중공업", "철강", "스틸", "메탈", "기계", "플랜트", "조선"] },
   { key: "food", name: "식품·유통", leader: "바다식품", suffixes: ["식품", "유통", "푸드", "리테일", "생활건강", "마트", "F&B"] },
   { key: "ent", name: "엔터·미디어", leader: "새벽엔터", suffixes: ["엔터", "미디어", "뮤직", "픽처스", "콘텐츠", "방송", "스튜디오"] },
+  { key: "build", name: "건설·부동산", leader: "돌담건설", suffixes: ["건설", "산업개발", "주택", "엔지니어링", "건자재", "개발", "토건"] },
+  { key: "air", name: "항공·운송", leader: "무지개항공", suffixes: ["항공", "에어", "로지스", "택배", "해운", "운송", "익스프레스"] },
+  { key: "telecom", name: "통신", leader: "파도텔레콤", suffixes: ["텔레콤", "통신", "모바일", "네트워크", "브로드밴드", "컴즈", "텔레시스"] },
+  { key: "energy", name: "에너지·전력", leader: "초록에너지", suffixes: ["에너지", "전력", "발전", "가스", "수소", "태양광", "그린파워"] },
+  { key: "health", name: "헬스케어", leader: "민들레제약", suffixes: ["헬스케어", "의료기기", "메디컬", "케어", "바이탈", "진단기", "웰니스"] },
+  { key: "defense", name: "우주·방산", leader: "미르항공우주", suffixes: ["항공우주", "방산", "디펜스", "에어로", "스페이스", "중방위", "시스템즈"] },
 ];
 const NAME_PREFIX = [
   "별빛", "달빛", "은하", "구름", "번개", "바다", "초록", "솜사탕", "무지개", "도토리",
@@ -200,16 +206,22 @@ export function generateStocks() {
   let n = 0;
   const add = (price, opts) => { const id = "s" + n++; stocks[id] = makeStock(opts.name, price, opts); return id; };
 
-  // 업종별 구성: 대장주 1 + 부대장주 2 + 관련주 7 + 일반주 3
+  // 가격대 다양화: 동전주(100원대) ~ 황제주(수백만원)까지 폭넓게 분포시킨다.
+  const leaderPrice = () => { let p = randInt(120000, 900000); if (Math.random() < 0.4) p = Math.round(p * rand(2, 4)); return p; }; // 12만 ~ 360만
+  const subPrice = () => randInt(40000, 280000);
+  const relatedPrice = () => { const r = Math.random(); return r < 0.15 ? randInt(800, 4000) : randInt(4000, 90000); };
+  const normalPrice = () => { const r = Math.random(); if (r < 0.3) return randInt(100, 900); if (r < 0.65) return randInt(900, 6000); return randInt(6000, 30000); }; // 동전주 포함
+
+  // 업종별 구성: 대장주 1 + 부대장주 2 + 관련주 8 + 일반주 4 + 우선주 1 = 16종목
   SECTORS.forEach((sec) => {
     used.add(sec.leader);
     const sfx = () => sec.suffixes[randInt(0, sec.suffixes.length - 1)];
-    const leaderId = add(randInt(60000, 130000), { name: sec.leader, type: "stock", role: "leader", sector: sec.name });
-    for (let i = 0; i < 2; i++) add(randInt(25000, 70000), { name: pickName(sec.suffixes[0]), type: "stock", role: "sub", sector: sec.name });
-    for (let i = 0; i < 7; i++) add(randInt(4000, 45000), { name: pickName(sfx()), type: "stock", role: "related", sector: sec.name });
-    for (let i = 0; i < 3; i++) add(randInt(1500, 22000), { name: pickName(sfx()), type: "stock", role: "normal", sector: sec.name });
-    // 업종 대장주의 우선주
-    add(Math.round(stocks[leaderId].price * 0.82), { name: sec.leader + "우", type: "preferred", sector: sec.name, link: leaderId });
+    const leaderId = add(leaderPrice(), { name: sec.leader, type: "stock", role: "leader", sector: sec.name });
+    for (let i = 0; i < 2; i++) add(subPrice(), { name: pickName(sec.suffixes[0]), type: "stock", role: "sub", sector: sec.name });
+    for (let i = 0; i < 8; i++) add(relatedPrice(), { name: pickName(sfx()), type: "stock", role: "related", sector: sec.name });
+    for (let i = 0; i < 4; i++) add(normalPrice(), { name: pickName(sfx()), type: "stock", role: "normal", sector: sec.name });
+    // 업종 대장주의 우선주(대장주 추종 → 함께 비싸짐)
+    add(Math.round(stocks[leaderId].price * 0.8), { name: sec.leader + "우", type: "preferred", sector: sec.name, link: leaderId });
   });
 
   // 다양한 자산 (지수/시장 추종형 + 독립형)
@@ -769,7 +781,8 @@ export function calcRanking(players, stocks) {
   return Object.entries(players || {})
     .map(([uid, p]) => ({
       uid,
-      nickname: p.nickname,
+      // 닉네임이 비어 있어도 '누군지' 보이도록 폴백 (uid 끝 4자리)
+      nickname: (p.nickname && String(p.nickname).trim()) || ("플레이어-" + String(uid).slice(-4)),
       connected: p.connected !== false,
       total: calcTotalAsset(p, stocks),
     }))

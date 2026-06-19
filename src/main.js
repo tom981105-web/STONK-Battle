@@ -210,7 +210,7 @@ async function ensureJoined(room) {
   try {
     // players/{uid} 만 부분 생성 (전체 set 금지) — 시작 자본 지급
     await update(ref(db, `rooms/${MAIN_ROOM}/players/${state.uid}`), {
-      nickname: state.nickname,
+      nickname: (state.nickname && state.nickname.trim()) || ("플레이어-" + String(state.uid).slice(-4)),
       cash: initialCash,
       holdings: null,
       totalAsset: initialCash,
