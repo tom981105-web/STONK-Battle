@@ -926,6 +926,8 @@ function orderRow(price, qty, side, maxQ, base) {
   </div>`;
 }
 
+let expandedHoldId = null; // 인라인 매수/매도 카드를 펼친 보유종목 id
+let holdQtyVal = 1;        // 인라인 카드 수량 (재렌더에도 유지)
 function renderPortfolio(room, uid) {
   const me = room.players?.[uid];
   const stocks = room.stocks || {};
@@ -970,6 +972,9 @@ function renderPortfolio(room, uid) {
     list.appendChild(li);
     return;
   }
+  // 확장된 보유종목이 더 이상 없으면 확장 해제
+  if (expandedHoldId && !entries.some(([id]) => id === expandedHoldId)) expandedHoldId = null;
+
   for (const [stockId, qty] of entries) {
     const s = stocks[stockId];
     if (!s) continue;
@@ -977,15 +982,45 @@ function renderPortfolio(room, uid) {
     const pl = avg ? (s.price - avg) * qty : 0;
     const plPct = avg ? ((s.price - avg) / avg) * 100 : 0;
     const c = pl > 0 ? "up" : pl < 0 ? "down" : "flat";
+    const open = expandedHoldId === stockId;
     const li = document.createElement("li");
-    li.className = "holding-item";
+    li.className = "holding-item" + (open ? " is-open" : "");
+    li.dataset.hold = stockId;
     li.innerHTML = `
-      <div class="hold-row1"><span class="hold-name">${esc(s.name)}</span><b>${fmtNum(qty)}주</b></div>
-      <div class="hold-row2 muted">평단 ${avg ? fmtNum(avg) : "-"} · 평가 ${fmtMoneyShort(s.price * qty)}원</div>
-      <div class="hold-row2 ${c}">${pl >= 0 ? "+" : ""}${fmtNum(pl)}원 (${plPct >= 0 ? "+" : ""}${plPct.toFixed(2)}%)</div>`;
+      <button class="hold-main" type="button" data-holdtoggle="${stockId}">
+        <div class="hold-row1"><span class="hold-name">${esc(s.name)}</span><b>${fmtNum(qty)}주</b></div>
+        <div class="hold-row2 muted">평단 ${avg ? fmtNum(avg) : "-"} · 평가 ${fmtMoneyShort(s.price * qty)}원</div>
+        <div class="hold-row2 ${c}">${pl >= 0 ? "+" : ""}${fmtNum(pl)}원 (${plPct >= 0 ? "+" : ""}${plPct.toFixed(2)}%)</div>
+      </button>
+      ${open ? holdTradeHtml(stockId, s) : ""}`;
     list.appendChild(li);
   }
 }
+
+// 보유종목 인라인 매수/매도 카드
+function holdTradeHtml(stockId, s) {
+  return `
+    <div class="hold-trade" data-trade="${stockId}">
+      <div class="ht-price">현재가 <b>${fmtNum(s.price)}원</b></div>
+      <div class="ht-qtyrow">
+        <button type="button" data-htq="-10">-10</button>
+        <button type="button" data-htq="-1">-1</button>
+        <input class="ht-input" type="number" min="1" value="${holdQtyVal}" inputmode="numeric" />
+        <button type="button" data-htq="1">+1</button>
+        <button type="button" data-htq="10">+10</button>
+        <button type="button" data-htq="max">최대</button>
+      </div>
+      <div class="ht-btns">
+        <button type="button" class="btn buy" data-ht="buy">매수</button>
+        <button type="button" class="btn sell" data-ht="sell">매도</button>
+        <button type="button" class="btn sell-all" data-ht="all">전량매도</button>
+      </div>
+    </div>`;
+}
+// 인라인 매수/매도 토글 상태 (매 틱 재렌더에도 유지)
+export function toggleHoldExpand(id) { expandedHoldId = expandedHoldId === id ? null : id; }
+export function getHoldQty() { return holdQtyVal; }
+export function setHoldQty(v) { holdQtyVal = Math.max(1, Math.floor(Number(v) || 1)); }
 
 // ----- 토스트 알림 -----
 let toastTimer = null;
@@ -1102,21 +1137,31 @@ function esc(str) {
 /* ===================== 토스 탭: 지수 스트립 ===================== */
 let indexHistory = {}; // key -> number[] (스파크라인용 링버퍼)
 const INDEX_MAX = 60;
+// 시장 분류: 대형주(대장주·부대장주·우선주·지수형 ETF)=코스피 / 그 외(관련·일반·리츠·SPAC·원자재·신규상장)=코스닥
+function isKospi(s) {
+  const role = s.role, type = s.type;
+  return role === "leader" || role === "sub" || type === "preferred" ||
+    type === "etf" || type === "leverage" || type === "inverse" || type === "bond";
+}
 function computeIndices(stocks) {
-  let wSum = 0, rSum = 0;
+  let wSum = 0, rSum = 0, kw = 0, kr = 0, dw = 0, dr = 0;
   const sec = {};
   for (const s of Object.values(stocks || {})) {
     const w = (s.value || 0) + 1;
-    wSum += w; rSum += w * (s.changeRate || 0);
+    const rw = w * (s.changeRate || 0);
+    wSum += w; rSum += rw;
     const k = s.sector || "기타";
     const e = sec[k] || (sec[k] = { w: 0, r: 0 });
-    e.w += w; e.r += w * (s.changeRate || 0);
+    e.w += w; e.r += rw;
+    if (isKospi(s)) { kw += w; kr += rw; } else { dw += w; dr += rw; }
   }
   const comp = wSum ? rSum / wSum : 0;
+  const kospi = kw ? kr / kw : 0;
+  const kosdaq = dw ? dr / dw : 0;
   const sectors = Object.entries(sec)
     .map(([name, v]) => ({ name, rate: v.w ? v.r / v.w : 0, w: v.w }))
     .sort((a, b) => b.w - a.w);
-  return { comp, sectors };
+  return { comp, kospi, kosdaq, sectors };
 }
 function pushIndex(key, val) {
   const a = indexHistory[key] || (indexHistory[key] = []);
@@ -1124,8 +1169,10 @@ function pushIndex(key, val) {
   if (a.length > INDEX_MAX) a.shift();
 }
 function accumulateIndices(stocks) {
-  const { comp, sectors } = computeIndices(stocks);
+  const { comp, kospi, kosdaq, sectors } = computeIndices(stocks);
   pushIndex("__comp__", 1000 * (1 + comp / 100));
+  pushIndex("__kospi__", 1000 * (1 + kospi / 100));
+  pushIndex("__kosdaq__", 1000 * (1 + kosdaq / 100));
   sectors.forEach((s) => pushIndex("sec:" + s.name, 1000 * (1 + s.rate / 100)));
 }
 function sparkSvg(arr, rate) {
@@ -1146,15 +1193,25 @@ function sectorRowHtml(s) {
   const val = (1000 * (1 + rate / 100)).toFixed(2);
   return `<div class="ixs-row"><span class="ixs-name">${esc(s.name)}</span><span class="ixs-val">${val}</span><span class="ixs-rate ${cls}">${arrow(rate)} ${sign}${rate.toFixed(2)}%</span></div>`;
 }
+// 시장 한 줄(코스피/코스닥): 이름 · 지수값 · 등락률 (큼직하게)
+function marketRowHtml(name, rate) {
+  const cls = dirClass(rate), sign = rate > 0 ? "+" : "";
+  const val = (1000 * (1 + rate / 100)).toFixed(2);
+  return `<div class="ixm-row"><span class="ixm-name">${esc(name)}</span><b class="ixm-val">${val}</b><span class="ixm-rate ${cls}">${arrow(rate)} ${sign}${rate.toFixed(2)}%</span></div>`;
+}
 function renderIndexStrip(room) {
   const el = $("indexStrip");
   if (!el) return;
-  const { comp, sectors } = computeIndices(room.stocks || {});
-  // STONK 종합 1카드 + 나머지 업종을 8개씩 2카드로 (가로 스크롤 없이 한눈에)
+  const { kospi, kosdaq, sectors } = computeIndices(room.stocks || {});
+  // 코스피/코스닥 시장 카드 1개 + 나머지 업종 8개씩 2카드로 (가로 스크롤 없이 한눈에)
   const top = sectors.slice(0, 16);
   const g1 = top.slice(0, 8), g2 = top.slice(8, 16);
+  const marketCard = `<div class="index-card index-market">
+    ${marketRowHtml("코스피", kospi)}
+    ${marketRowHtml("코스닥", kosdaq)}
+  </div>`;
   const html = [
-    indexCardHtml("STONK 종합", 1000 * (1 + comp / 100), comp, indexHistory["__comp__"], "index-comp"),
+    marketCard,
     `<div class="index-card index-sectors">${g1.map(sectorRowHtml).join("")}</div>`,
     g2.length ? `<div class="index-card index-sectors">${g2.map(sectorRowHtml).join("")}</div>` : "",
   ];

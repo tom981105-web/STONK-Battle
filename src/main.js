@@ -842,10 +842,56 @@ async function editNickname() {
   ui.showToast(`닉네임을 '${nick}'(으)로 변경했습니다`, "up");
 }
 
+// ----- 보유종목 인라인 매수/매도 -----
+async function inlineTrade(stockId, kind, qty) {
+  const { roomCode, roomData, uid, nickname } = state;
+  if (!roomData || roomData.status !== "playing") return;
+  const name = roomData.stocks?.[stockId]?.name || "";
+  try {
+    if (kind === "buy") { await game.buyStock(roomCode, uid, nickname, stockId, qty, roomData); ui.showToast(`${name} ${qty}주 매수 체결!`, "up"); }
+    else if (kind === "sell") { await game.sellStock(roomCode, uid, nickname, stockId, qty, roomData); ui.showToast(`${name} ${qty}주 매도 체결!`, "down"); }
+    else if (kind === "all") { await game.sellAllStock(roomCode, uid, nickname, stockId, roomData); ui.showToast(`${name} 전량 매도 체결!`, "down"); }
+  } catch (e) { ui.showToast(e.message, "err"); }
+}
+
 // ----- 이벤트 바인딩 -----
 function bindEvents() {
   // 상단 계좌 칩(아바타) 클릭 → 닉네임 변경
   document.querySelector(".tnav-acct")?.addEventListener("click", editNickname);
+
+  // 보유종목 클릭 → 인라인 매수/매도 카드 토글 (같은 종목 다시 누르면 닫힘)
+  const holdingsList = document.getElementById("holdingsList");
+  if (holdingsList) {
+    holdingsList.addEventListener("click", (e) => {
+      const toggle = e.target.closest("[data-holdtoggle]");
+      if (toggle) { ui.toggleHoldExpand(toggle.dataset.holdtoggle); scheduleRender(); return; }
+      const card = e.target.closest(".hold-trade");
+      if (!card) return;
+      const stockId = card.dataset.trade;
+      const input = card.querySelector(".ht-input");
+      const step = e.target.closest("[data-htq]");
+      if (step) {
+        const v = step.dataset.htq;
+        if (v === "max") {
+          const price = state.roomData?.stocks?.[stockId]?.price;
+          const cash = state.roomData?.players?.[state.uid]?.cash || 0;
+          if (price) { const m = Math.max(1, Math.floor(cash / (price * 1.0002))); ui.setHoldQty(m); if (input) input.value = m; }
+        } else {
+          const cur = Math.max(1, Math.floor(Number(input?.value) || 1) + Number(v));
+          ui.setHoldQty(cur); if (input) input.value = cur;
+        }
+        return;
+      }
+      const ht = e.target.closest("[data-ht]");
+      if (ht) {
+        const qty = Math.max(1, Math.floor(Number(input?.value) || 1));
+        inlineTrade(stockId, ht.dataset.ht, qty);
+      }
+    });
+    holdingsList.addEventListener("input", (e) => {
+      if (e.target.classList.contains("ht-input")) ui.setHoldQty(e.target.value);
+    });
+  }
   // 닉네임 입력 (Home 에서 닉네임이 넘어오면 이 화면은 건너뜀)
   document.getElementById("btnNickname")?.addEventListener("click", () => {
     const nick = document.getElementById("nicknameInput").value.trim();

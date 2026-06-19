@@ -287,6 +287,14 @@ select option { background: var(--card); color: var(--text); }
 /* STONK 종합(1) + 업종 8개씩 2카드 → 가로 스크롤 없이 한 줄 3카드 */
 .index-strip { display: grid; grid-template-columns: 1.1fr 1fr 1fr; gap: 10px; align-items: stretch; }
 .index-card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+/* 코스피/코스닥 시장 카드 */
+.index-market { justify-content: center; gap: 10px; }
+.ixm-row { display: grid; grid-template-columns: auto 1fr auto; align-items: baseline; gap: 10px; padding: 6px 0; font-variant-numeric: tabular-nums; }
+.ixm-row + .ixm-row { border-top: 1px solid var(--border2); }
+.ixm-name { font-size: 13px; font-weight: 800; color: var(--text2); }
+.ixm-val { font-size: 20px; font-weight: 800; text-align: right; }
+.ixm-rate { font-size: 13px; font-weight: 800; min-width: 76px; text-align: right; }
+
 /* 업종 리스트 카드: 8개 업종을 컴팩트 행으로 */
 .index-sectors { gap: 0; justify-content: center; }
 .ixs-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: baseline; gap: 10px; padding: 4px 0; border-bottom: 1px solid var(--border2); font-variant-numeric: tabular-nums; }
@@ -458,10 +466,23 @@ select option { background: var(--card); color: var(--text); }
 .rail-link.danger { color: var(--up); border-color: var(--up); }
 
 .holdings-list, .ranking-list { list-style: none; display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; }
-.holding-item { display: flex; flex-direction: column; gap: 2px; background: var(--bg2); border-radius: 10px; padding: 8px 11px; }
+.holding-item { display: flex; flex-direction: column; gap: 0; background: var(--bg2); border-radius: 10px; padding: 0; overflow: hidden; }
+.holding-item.is-open { box-shadow: 0 0 0 1.5px var(--brand) inset; }
+.hold-main { display: flex; flex-direction: column; gap: 2px; width: 100%; text-align: left; background: none; border: none; cursor: pointer; padding: 8px 11px; color: inherit; font: inherit; }
+.hold-main:hover { background: var(--elev); }
 .hold-row1 { display: flex; justify-content: space-between; align-items: baseline; }
 .hold-name { font-weight: 700; }
 .hold-row2 { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+/* 인라인 매수/매도 카드 */
+.hold-trade { display: flex; flex-direction: column; gap: 8px; padding: 10px 11px 11px; border-top: 1px solid var(--border); background: var(--card); animation: slideDown 0.18s ease; }
+.ht-price { font-size: 12px; color: var(--text2); font-weight: 600; }
+.ht-price b { color: var(--text); font-weight: 800; }
+.ht-qtyrow { display: grid; grid-template-columns: repeat(2, auto) 1fr repeat(3, auto); gap: 4px; align-items: center; }
+.ht-qtyrow button { min-height: 32px; padding: 0 8px; border: 1px solid var(--border); background: var(--card); color: var(--text2); border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; }
+.ht-qtyrow button:hover { background: var(--bg2); color: var(--text); }
+.ht-input { width: 100%; min-width: 0; height: 32px; text-align: center; border: 1px solid var(--border); border-radius: 8px; background: var(--input-bg); color: var(--text); font-weight: 800; font-variant-numeric: tabular-nums; }
+.ht-btns { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+.ht-btns .btn { min-height: 40px; font-size: 13px; }
 .holdings-list li.muted { justify-content: center; text-align: center; font-size: 13px; color: var(--muted); padding: 14px; }
 .ranking-list { counter-reset: rank; gap: 5px; }
 .ranking-list li { display: flex; align-items: center; gap: 8px; background: var(--bg2); border-radius: 10px; padding: 9px 11px; font-variant-numeric: tabular-nums; }
