@@ -207,7 +207,9 @@ function newPlayer(nickname) {
 let joiningRoom = false;
 async function ensureJoined(room) {
   if (!state.uid) return false;
-  if (room.players && room.players[state.uid]) return true; // 이미 참가자
+  // 'cash' 필드가 있어야 정식 등록으로 본다. (스킨/우편만 받아 부분 생성된 경우엔 시작자본을 지급)
+  const p = room.players && room.players[state.uid];
+  if (p && p.cash != null) return true; // 이미 참가자
   if (joiningRoom) return false;
   joiningRoom = true;
   const initialCash = Number(room.settings?.initialCash) || game.START_CASH;
@@ -881,7 +883,7 @@ async function doExchange() { // 환전(빼오기): 시장 현금 → 금고
   if (!roomData || !uid) return;
   const cash = roomData.players?.[uid]?.cash || 0;
   if (cash < 1) { ui.showToast("환전할 현금이 없습니다", "err"); return; }
-  const input = prompt(`환전(빼오기): 시장 현금을 금고로 옮깁니다. 수수료 ${BANK_FEE * 100}%\n보유 현금 ${won(cash)}원\n옮길 금액을 입력하세요:`, String(cash));
+  const input = prompt(`채우기(빼오기): 시장 현금을 금고로 옮깁니다. 수수료 ${BANK_FEE * 100}%\n보유 현금 ${won(cash)}원\n옮길 금액을 입력하세요:`, String(cash));
   if (input === null) return;
   const amt = Math.floor(Number(input) || 0);
   if (!amt || amt < 1) { ui.showToast("금액을 확인하세요", "err"); return; }
@@ -898,7 +900,7 @@ async function doFill() { // 채우기: 금고 → 시장 현금
   if (!uid) return;
   const bal = state.bank || 0;
   if (bal < 1) { ui.showToast("금고 잔액이 없습니다. 먼저 환전(빼오기) 하세요", "err"); return; }
-  const input = prompt(`채우기: 금고 잔액을 시장 현금으로 넣습니다. 수수료 ${BANK_FEE * 100}%\n금고 잔액 ${won(bal)}원\n넣을 금액을 입력하세요:`, String(bal));
+  const input = prompt(`환전(넣기): 금고 잔액을 시장 현금으로 넣습니다. 수수료 ${BANK_FEE * 100}%\n금고 잔액 ${won(bal)}원\n넣을 금액을 입력하세요:`, String(bal));
   if (input === null) return;
   const amt = Math.floor(Number(input) || 0);
   if (!amt || amt < 1) { ui.showToast("금액을 확인하세요", "err"); return; }
@@ -1049,8 +1051,8 @@ function bindEvents() {
     const act = e.target.closest("[data-acctact]");
     if (act) {
       const a = act.dataset.acctact;
-      if (a === "fill") doFill();
-      else if (a === "exchange") doExchange();
+      if (a === "tobank") doExchange();        // 채우기(빼오기): 시장 현금 → 금고
+      else if (a === "tomarket") doFill();      // 환전(넣기): 금고 → 시장 현금
       else if (a === "send") goToStonkHome(); // 보내기는 STONK Home 금고에서
       return;
     }

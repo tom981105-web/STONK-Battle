@@ -1319,7 +1319,7 @@ function renderAccount(room, uid) {
         <div class="ah-no">기본계좌 · ${esc(code)}</div>
         <div class="ah-asset">${fmt(total)}</div>
         <div class="ah-pnl ${plCls}">평가손익 ${pl >= 0 ? "+" : ""}${fmtNum(pl)}원 (${plPct >= 0 ? "+" : ""}${plPct.toFixed(2)}%)</div>
-        <div class="acct-actions"><button class="btn small" data-acctact="fill">채우기</button><button class="btn small" data-acctact="send">보내기</button><button class="btn small" data-acctact="exchange">환전(빼오기)</button></div>
+        <div class="acct-actions"><button class="btn small" data-acctact="tobank">채우기(빼오기)</button><button class="btn small" data-acctact="send">보내기</button><button class="btn small" data-acctact="tomarket">환전(넣기)</button></div>
       </div>
       <div class="acct-grid">
         <div class="acct-stat"><div class="as-k">🏦 STONK 금고(영구)</div><div class="as-v">${fmt(bankBalance)}</div></div>
