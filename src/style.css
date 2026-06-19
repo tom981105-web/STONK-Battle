@@ -545,6 +545,14 @@ select option { background: var(--card); color: var(--text); }
 ::-webkit-scrollbar-thumb { background: var(--scroll); border-radius: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
 
+/* ---- 장 마감 배너 ---- */
+.market-closed {
+  margin: 10px 20px 0; padding: 11px 16px; border-radius: 12px; text-align: center;
+  font-size: 13.5px; font-weight: 800; letter-spacing: -0.01em;
+  background: var(--card-soft); border: 1px solid var(--border); color: var(--text2);
+}
+.market-closed.hidden { display: none; }
+
 /* ---- 종목 호버 미리보기 카드 (토스식 미니차트 팝업) ---- */
 .stock-hover {
   position: fixed; z-index: 60; width: 300px; pointer-events: none;

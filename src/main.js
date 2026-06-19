@@ -112,6 +112,27 @@ function boot() {
     }
   });
 
+  // ----- 패치 후 강제 새로고침 브로드캐스트 -----
+  // STONK Admin 에서 broadcast/reloadAt 을 갱신하면, 접속 중인 모든 battle 클라이언트가
+  // 시장 데이터는 그대로 둔 채 페이지만 새로고침해 새로 배포된 코드를 받는다.
+  // (시장 재시작과 무관 — 종목/플레이어 자산은 건드리지 않는다.)
+  // 클럭 차이에 안전하도록: 첫 스냅샷은 기준값으로만 저장하고, 이후 값이 커지면 새로고침.
+  watchForceReload();
+}
+
+let reloadBaseline = null; // 구독 시작 시점에 본 reloadAt(이 값보다 커지면 새로고침)
+function watchForceReload() {
+  onValue(ref(db, "broadcast/reloadAt"), (snap) => {
+    const at = Number(snap.val()) || 0;
+    if (reloadBaseline === null) { reloadBaseline = at; return; } // 첫 스냅샷 = 기준값
+    if (at > reloadBaseline) {
+      reloadBaseline = at;
+      try { ui.showToast?.("새 버전이 배포되어 새로고침합니다…", "up"); } catch (e) {}
+      // 토스트가 잠깐 보이도록 약간의 지연 후 reload (Vite 해시 번들이라 새 코드 수신)
+      setTimeout(() => location.reload(), 400);
+    }
+  });
+
   // 이메일/비밀번호 로그인 상태 감시
   // (로그인되어 있으면 바로 진행, 아니면 로그인 화면 표시)
   onAuthStateChanged(auth, (user) => {
@@ -429,6 +450,15 @@ async function maybeCatchUp(room) {
   // 동시 다중 보정은 history.runCatchUp 내부의 catchupLock 트랜잭션으로 1명만 수행된다.
   if (!state.uid) return;
   if (state.catchupDoneFor === state.roomCode) return;
+  // 마감 시간엔 보정 안 함(닫힌 시장을 시뮬레이션하지 않음)
+  if (!isMarketOpenNow(room)) { state.catchupDoneFor = state.roomCode; return; }
+  // 마지막 tick 이 이번 개장 세션 시작보다 이전이면(밤새 마감) → 닫힌 시간은 건너뛰고 신선하게 재개
+  const lastTick = (room.market && room.market.lastTickAt) || room.marketTick || 0;
+  if (lastTick && lastTick < marketSessionStartTs(room)) {
+    state.catchupDoneFor = state.roomCode;
+    try { await set(ref(db, `rooms/${state.roomCode}/market/lastTickAt`), Date.now()); } catch (e) {}
+    return;
+  }
   if (!history.needsCatchup(room)) { state.catchupDoneFor = state.roomCode; return; }
   state.catchupDoneFor = state.roomCode; // 시도 표시(반복 호출 방지)
   try {
@@ -466,9 +496,34 @@ async function acquireTickLease() {
 }
 
 // 방 상태에 따라 드라이버 여부를 결정한다(폴링/방 업데이트 양쪽에서 호출).
+// ===== 시장 개장시간 (기본 18~24시, admin 이 rooms/{code}/market.openHour·closeHour 로 조정) =====
+function getMarketHours(room) {
+  const m = (room && room.market) || {};
+  let oh = Number.isFinite(m.openHour) ? Math.round(m.openHour) : 18;
+  let ch = Number.isFinite(m.closeHour) ? Math.round(m.closeHour) : 24;
+  oh = Math.max(0, Math.min(24, oh));
+  ch = Math.max(0, Math.min(24, ch));
+  return { oh, ch };
+}
+function isMarketOpenNow(room) {
+  const { oh, ch } = getMarketHours(room);
+  if (oh === ch) return true; // 동일값 → 24시간 개장으로 간주
+  const h = new Date().getHours();
+  return ch > oh ? (h >= oh && h < ch) : (h >= oh || h < ch); // ch>oh: 같은날 / else: 자정 넘김
+}
+// 현재 개장 세션의 시작 시각(ts). lastTick 이 이보다 이전이면 "밤새 마감" 으로 보고 보정하지 않는다.
+function marketSessionStartTs(room) {
+  const { oh, ch } = getMarketHours(room);
+  const d = new Date();
+  const todayOpen = new Date(d.getFullYear(), d.getMonth(), d.getDate(), oh, 0, 0, 0).getTime();
+  if (ch >= oh) return todayOpen;
+  return d.getHours() < ch ? todayOpen - 86400000 : todayOpen; // 자정 넘김: 새벽이면 어제 open
+}
+
 async function ensureMarketDriver(room) {
   room = room || state.roomData;
   if (!room || room.status !== "playing") { stopDriving(); return; }
+  if (!isMarketOpenNow(room)) { stopDriving(); return; } // 마감 시간 → 드라이버 없음(시세 동결, 쓰기 0)
   if (!state.uid) return;
 
   const now = Date.now();
@@ -499,6 +554,7 @@ function startDriving() {
   state.tickTimer = setInterval(async () => {
     const room = state.roomData;
     if (!room || room.status !== "playing") { stopDriving(); return; }
+    if (!isMarketOpenNow(room)) { stopDriving(); return; } // 마감 시간 진입 → 틱 중단(시세 동결)
     try {
       // 리스 갱신 주기 도래 시: 갱신 실패(타인이 인수)하면 드라이버 중단
       if (Date.now() - state.tickLeaseRenewAt >= TICK_LEASE_RENEW_MS) {
@@ -559,6 +615,14 @@ function startClock() {
   state.clockTimer = setInterval(() => {
     const room = state.roomData;
     if (!room || room.status !== "playing") return;
+    // 개장시간 밖이면 '장 마감' 배너 + 시세/진행바 동결
+    const closed = !isMarketOpenNow(room);
+    const cb = document.getElementById("marketClosed");
+    if (cb) {
+      cb.classList.toggle("hidden", !closed);
+      if (closed) cb.textContent = `🌙 장 마감 — 매일 ${String(getMarketHours(room).oh).padStart(2, "0")}:00 개장 (${String(getMarketHours(room).ch % 24).padStart(2, "0")}:00 마감)`;
+    }
+    if (closed) return; // 마감 중: 가격·진행바 동결
     ui.updateTimer(Date.now() - (room.startedAt || Date.now()));
     ui.tickIpoCountdown(room); // 공모 청약 마감 카운트다운
     ui.updateTickProgress(room); // 다음 변동까지 진행바/카운트다운 (체감 개선, tick 간격 불변)
