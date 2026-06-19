@@ -218,7 +218,9 @@ select option { background: var(--card); color: var(--text); }
 .tnav-code { display: flex; align-items: center; gap: 6px; background: var(--bg2); border-radius: 999px; padding: 5px 6px 5px 11px; font-size: 12.5px; }
 .tnav-code-k { color: var(--muted); font-weight: 600; }
 .tnav-code b { font-weight: 800; font-variant-numeric: tabular-nums; }
-.tnav-acct { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 999px; }
+.tnav-acct { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 999px; cursor: pointer; }
+.tnav-acct:hover { background: var(--bg2); }
+.tnav-acct::after { content: "✎"; font-size: 11px; color: var(--muted); margin-left: 1px; }
 .tnav-avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--brand-grad); color: #fff; font-weight: 800; font-size: 14px; display: inline-flex; align-items: center; justify-content: center; }
 .tnav-acct-info { display: flex; flex-direction: column; line-height: 1.15; }
 .tnav-acct-info b { font-size: 13px; font-weight: 700; }

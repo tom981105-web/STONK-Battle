@@ -825,8 +825,27 @@ async function doApplyIpo() {
   }
 }
 
+// ----- 닉네임 변경 (상단 계좌 칩 클릭) -----
+async function editNickname() {
+  const cur = state.nickname || "";
+  const input = prompt("사용할 닉네임을 입력하세요 (최대 10자)", cur);
+  if (input === null) return; // 취소
+  const nick = input.trim().slice(0, 10);
+  if (!nick) { ui.showToast("닉네임을 입력하세요", "err"); return; }
+  state.nickname = nick;
+  try { localStorage.setItem("mb_nickname", nick); localStorage.setItem("stonk:lastNickname", nick); } catch (e) {}
+  try {
+    if (state.uid && state.roomCode) {
+      await set(ref(db, `rooms/${state.roomCode}/players/${state.uid}/nickname`), nick);
+    }
+  } catch (e) { console.warn("[nickname] 저장 실패:", e); }
+  ui.showToast(`닉네임을 '${nick}'(으)로 변경했습니다`, "up");
+}
+
 // ----- 이벤트 바인딩 -----
 function bindEvents() {
+  // 상단 계좌 칩(아바타) 클릭 → 닉네임 변경
+  document.querySelector(".tnav-acct")?.addEventListener("click", editNickname);
   // 닉네임 입력 (Home 에서 닉네임이 넘어오면 이 화면은 건너뜀)
   document.getElementById("btnNickname")?.addEventListener("click", () => {
     const nick = document.getElementById("nicknameInput").value.trim();
