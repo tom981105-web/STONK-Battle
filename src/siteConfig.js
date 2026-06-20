@@ -12,6 +12,7 @@ const SITE_URLS = {
   wiki:   "https://tom981105-web.github.io/STONK-Wiki/",
   arcade: "https://tom981105-web.github.io/STONK-Arcade/",
   gacha:  "https://tom981105-web.github.io/STONK-Gacha/",
+  bank:   "https://tom981105-web.github.io/STONK-Bank/",
   admin:  "https://tom981105-web.github.io/STONK-Admin/market-admin.html",
 };
 
@@ -22,6 +23,7 @@ const LOCAL_FALLBACK = {
   wiki:   "../Market-Wiki/index.html",
   arcade: "../STONK-Arcade/index.html",
   gacha:  "../STONK-Gacha/index.html",
+  bank:   "../STONK-Bank/index.html",
   admin:  "../Market-Admin/market-admin.html",
 };
 
@@ -94,6 +96,7 @@ export function buildBoardUrl(room)  { return buildSiteUrl("board",  { room }); 
 export function buildWikiUrl(room, companyId) { return buildSiteUrl("wiki", { room, company: companyId }); }
 export function buildArcadeUrl(room) { return buildSiteUrl("arcade", { room }); }
 export function buildGachaUrl(room)  { return buildSiteUrl("gacha",  { room }); }
+export function buildBankUrl(room)   { return buildSiteUrl("bank",   { room }); }
 export function buildAdminUrl(room)  { return buildSiteUrl("admin",  { room }); }
 
 // 전역에서도 접근 가능하게 (UI 코드 호환)
@@ -102,7 +105,7 @@ const SiteConfig = {
   getSiteConfig, normalizeRoomCode, getUrlRoomCode, getCurrentRoomCode,
   setLastRoomCode, getLastRoomCode, buildSiteUrl,
   buildHomeUrl, buildBattleUrl, buildBoardUrl, buildWikiUrl,
-  buildArcadeUrl, buildGachaUrl, buildAdminUrl, LAST_ROOM_KEY,
+  buildArcadeUrl, buildGachaUrl, buildBankUrl, buildAdminUrl, LAST_ROOM_KEY,
 };
 if (typeof window !== "undefined") window.SiteConfig = SiteConfig;
 export default SiteConfig;

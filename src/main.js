@@ -688,6 +688,7 @@ function updateSiteNav(code) {
   setHref("navWiki", site.buildWikiUrl(code, company));
   setHref("navArcade", site.buildArcadeUrl(code));
   setHref("navGacha", site.buildGachaUrl(code));
+  setHref("navBank", site.buildBankUrl(code));
   setHref("navAdmin", site.buildAdminUrl(code));
 }
 
