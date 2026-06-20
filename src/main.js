@@ -879,6 +879,36 @@ async function inlineTrade(stockId, kind, qty) {
   } catch (e) { ui.showToast(e.message, "err"); }
 }
 
+// ----- 금액 입력 모달 (prompt 대체 · 토스 다크 톤) → 금액 문자열 or null -----
+function battleAmountModal({ title, desc, value, confirm = "확인", icon }) {
+  return new Promise((resolve) => {
+    const ov = document.createElement("div");
+    ov.className = "bt-modal";
+    ov.innerHTML = `
+      <div class="bt-modal-dim"></div>
+      <div class="bt-modal-card" role="dialog" aria-modal="true">
+        <div class="bt-modal-head">${icon ? `<span class="bt-modal-icon">${icon}</span>` : ""}<h3>${title || ""}</h3></div>
+        ${desc ? `<p class="bt-modal-desc">${desc}</p>` : ""}
+        <div class="bt-modal-inwrap">
+          <input class="bt-modal-input" type="number" inputmode="numeric" value="${value != null ? value : ""}" />
+          <span class="bt-modal-suffix">원</span>
+        </div>
+        <div class="bt-modal-actions">
+          <button class="btn" type="button" data-cancel>취소</button>
+          <button class="btn primary" type="button" data-ok>${confirm}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+    const input = ov.querySelector(".bt-modal-input");
+    setTimeout(() => { input.focus(); input.select(); }, 30);
+    const done = (v) => { ov.remove(); resolve(v); };
+    ov.querySelector("[data-cancel]").addEventListener("click", () => done(null));
+    ov.querySelector(".bt-modal-dim").addEventListener("click", () => done(null));
+    ov.querySelector("[data-ok]").addEventListener("click", () => done(input.value));
+    ov.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); done(input.value); } else if (e.key === "Escape") done(null); });
+  });
+}
+
 // ----- STONK 금고 ↔ 시장 현금 (채우기/환전, 수수료 5%) -----
 const won = (n) => Math.round(Number(n) || 0).toLocaleString("ko-KR");
 async function doExchange() { // 환전(빼오기): 시장 현금 → 금고
@@ -886,8 +916,8 @@ async function doExchange() { // 환전(빼오기): 시장 현금 → 금고
   if (!roomData || !uid) return;
   const cash = roomData.players?.[uid]?.cash || 0;
   if (cash < 1) { ui.showToast("환전할 현금이 없습니다", "err"); return; }
-  const input = prompt(`채우기(넣기): 시장 현금을 금고에 넣습니다. 수수료 ${BANK_FEE * 100}%\n보유 현금 ${won(cash)}원\n금고에 넣을 금액을 입력하세요:`, String(cash));
-  if (input === null) return;
+  const input = await battleAmountModal({ title: "채우기 (시장 → 금고)", icon: "🏦", desc: `시장 현금을 금고에 넣습니다. 수수료 ${BANK_FEE * 100}% · 보유 현금 ${won(cash)}원`, value: cash, confirm: "넣기" });
+  if (input == null) return;
   const amt = Math.floor(Number(input) || 0);
   if (!amt || amt < 1) { ui.showToast("금액을 확인하세요", "err"); return; }
   try {
@@ -903,8 +933,8 @@ async function doFill() { // 채우기: 금고 → 시장 현금
   if (!uid) return;
   const bal = state.bank || 0;
   if (bal < 1) { ui.showToast("금고 잔액이 없습니다. 먼저 환전(빼오기) 하세요", "err"); return; }
-  const input = prompt(`환전(빼기): 금고에서 빼서 시장 현금으로 넣습니다. 수수료 ${BANK_FEE * 100}%\n금고 잔액 ${won(bal)}원\n금고에서 뺄 금액을 입력하세요:`, String(bal));
-  if (input === null) return;
+  const input = await battleAmountModal({ title: "환전 (금고 → 시장)", icon: "💵", desc: `금고에서 빼서 시장 현금으로 넣습니다. 수수료 ${BANK_FEE * 100}% · 금고 잔액 ${won(bal)}원`, value: bal, confirm: "빼기" });
+  if (input == null) return;
   const amt = Math.floor(Number(input) || 0);
   if (!amt || amt < 1) { ui.showToast("금액을 확인하세요", "err"); return; }
   try {

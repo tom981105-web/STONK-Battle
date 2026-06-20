@@ -712,3 +712,20 @@ body.has-skin .rail-invest-card { backdrop-filter: blur(12px); -webkit-backdrop-
 body.has-skin .rank-item:hover { background: rgba(255, 255, 255, 0.06); }
 body.has-skin .rank-item { border-bottom-color: rgba(255, 255, 255, 0.06); }
 body.has-skin .rank-head { border-bottom-color: rgba(255, 255, 255, 0.10); }
+
+/* ===== 금액 입력 모달 (prompt 대체 · 토스 다크 톤) ===== */
+.bt-modal { position: fixed; inset: 0; z-index: 200; display: grid; place-items: center; padding: 20px; animation: btFade .16s ease; }
+.bt-modal-dim { position: absolute; inset: 0; background: rgba(4,5,9,.6); backdrop-filter: blur(6px); }
+.bt-modal-card { position: relative; width: min(400px, 100%); padding: 22px; border-radius: 20px; background: var(--card); border: 1px solid var(--border); box-shadow: var(--shadow-lg); animation: btPop .18s ease-out; }
+.bt-modal-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.bt-modal-icon { font-size: 24px; }
+.bt-modal-head h3 { font-size: 20px; font-weight: 800; letter-spacing: -.03em; }
+.bt-modal-desc { color: var(--text2); font-size: 13px; line-height: 1.55; margin-bottom: 14px; }
+.bt-modal-inwrap { position: relative; display: flex; align-items: center; }
+.bt-modal-input { width: 100%; min-height: 52px; padding: 12px 38px 12px 14px; border: 1.5px solid var(--border); border-radius: var(--radius-sm); background: var(--input-bg); color: var(--text); font-size: 20px; font-weight: 800; text-align: right; font-variant-numeric: tabular-nums; }
+.bt-modal-input:focus { border-color: var(--brand); outline: none; }
+.bt-modal-suffix { position: absolute; right: 14px; font-size: 14px; font-weight: 800; color: var(--muted); pointer-events: none; }
+.bt-modal-actions { display: grid; grid-template-columns: 1fr 1.4fr; gap: 8px; margin-top: 18px; }
+.bt-modal-actions .btn { min-height: 46px; }
+@keyframes btPop { from { opacity: 0; transform: translateY(-8px) scale(.98); } to { opacity: 1; transform: none; } }
+@keyframes btFade { from { opacity: 0; } to { opacity: 1; } }
