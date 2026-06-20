@@ -277,20 +277,24 @@ function subscribeBank() {
   // v2.0: 신용등급/대출 배지(표시 전용, 1회 조회 — 매수/매도 로직에는 영향 없음)
   get(ref(db, `rooms/${MAIN_ROOM}/bank/${state.uid}`)).then((s) => {
     const b = s.val() || {};
-    renderBankBadge(Number(b.creditScore), Number(b.loanPrincipal || 0) + Number(b.loanInterest || 0));
+    renderBankBadge(Number(b.creditScore), Number(b.loanPrincipal || 0) + Number(b.loanInterest || 0), b.vipTier || "NORMAL");
   }).catch(() => {});
 }
 
 function bankGradeOf(s) { s = Math.max(0, Math.min(100, Math.round(isFinite(s) ? s : 60))); return s >= 90 ? "S" : s >= 75 ? "A" : s >= 55 ? "B" : s >= 35 ? "C" : s >= 15 ? "D" : "F"; }
-function renderBankBadge(score, owe) {
+const VIP_LABEL = { NORMAL: "일반", SILVER: "실버", GOLD: "골드", PLATINUM: "플래티넘", BLACK: "블랙" };
+function renderBankBadge(score, owe, vipTier) {
   const el = document.getElementById("bankBadge");
   if (!el) return;
   const grade = bankGradeOf(score);
   owe = Math.max(0, Math.round(owe || 0));
+  const big = owe > 5000000; // 대출 큰 경우 경고 강화
+  const black = vipTier === "BLACK";
   el.hidden = false;
-  el.className = "bank-badge" + (owe > 0 ? " danger" : "");
+  el.className = "bank-badge" + (owe > 0 ? " danger" : "") + (big ? " danger-strong" : "") + (black ? " black" : "");
   el.innerHTML = `<span class="bb-grade g-${grade}">신용 ${grade}</span>`
-    + (owe > 0 ? `<span class="bb-loan">대출 ${owe.toLocaleString("ko-KR")}원 · 상환 필요</span>` : `<span class="bb-ok">대출 없음</span>`);
+    + (vipTier && vipTier !== "NORMAL" ? `<span class="bb-vip v-${vipTier}">VIP ${VIP_LABEL[vipTier] || vipTier}</span>` : "")
+    + (owe > 0 ? `<span class="bb-loan">대출 ${owe.toLocaleString("ko-KR")}원${big ? " · 상환 시급!" : " · 상환 필요"}</span>` : `<span class="bb-ok">대출 없음</span>`);
   el.onclick = () => { location.href = site.buildBankUrl(MAIN_ROOM); };
 }
 
