@@ -12,7 +12,7 @@ import {
 } from "firebase/database";
 
 // ----- 게임 상수 -----
-export const START_CASH = 10_000_000; // 시작 자본 1천만원 (모의투자 기준)
+export const START_CASH = 5_000_000; // 시작 자본 500만원 (모의투자 기준)
 export const MIN_PRICE = 10; // 최저가 (10원 이하로 안 내려감)
 export const MAX_PLAYERS = 6;
 export const MIN_PLAYERS = 1; // 1명이면 혼자 테스트 가능 (정식 대전은 2명 이상 권장)
