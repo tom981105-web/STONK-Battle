@@ -729,3 +729,15 @@ body.has-skin .rank-head { border-bottom-color: rgba(255, 255, 255, 0.10); }
 .bt-modal-actions .btn { min-height: 46px; }
 @keyframes btPop { from { opacity: 0; transform: translateY(-8px) scale(.98); } to { opacity: 1; transform: none; } }
 @keyframes btFade { from { opacity: 0; } to { opacity: 1; } }
+
+/* v2.0: 은행 신용/대출 배지 (우측 레일) */
+.bank-badge { display: flex; flex-direction: column; gap: 3px; width: 100%; margin-top: 8px; padding: 9px 11px;
+  border: 1px solid var(--line, #2a3242); border-radius: 12px; background: rgba(255,255,255,.03); color: inherit;
+  cursor: pointer; text-align: left; font: inherit; }
+.bank-badge:hover { border-color: #e8c87a; }
+.bank-badge.danger { border-color: rgba(242,86,106,.5); background: rgba(242,86,106,.08); }
+.bank-badge .bb-grade { font-size: 12px; font-weight: 800; }
+.bank-badge .bb-ok { font-size: 11px; color: #36d399; font-weight: 700; }
+.bank-badge .bb-loan { font-size: 11px; color: #f2566a; font-weight: 800; }
+.bank-badge .g-S { color: #f0d488; } .bank-badge .g-A { color: #8fe3b6; } .bank-badge .g-B { color: #9fc0ff; }
+.bank-badge .g-C { color: #e6d18a; } .bank-badge .g-D { color: #f0b07a; } .bank-badge .g-F { color: #f2868f; }
