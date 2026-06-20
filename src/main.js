@@ -559,14 +559,10 @@ async function ensureMarketDriver(room) {
     return;
   }
 
-  const iAmHost = room.hostId === state.uid;
-  const hostConnected = room.hostId && room.players?.[room.hostId]?.connected !== false;
-
+  // 단일 방 운영: 방장 개념 없음. 개장 시간엔 '접속 중인 누구나' 리스를 잡아 시장을 이어 진행한다.
+  // (예전 hostId 가 stale 하게 남아 모두가 양보 → 시장이 멈추던 교착을 제거)
   if (leaseValidByOther) return;            // 다른 드라이버가 진행 중 → 대기
-  if (!iAmHost && hostConnected) return;    // 방장이 접속 중 → 방장에게 양보
-
-  // 드라이버 공석: 리스를 시도해 잡으면 내가 진행한다.
-  const got = await acquireTickLease();
+  const got = await acquireTickLease();      // 드라이버 공석 → 리스를 잡으면 내가 진행
   if (got) startDriving();
 }
 
