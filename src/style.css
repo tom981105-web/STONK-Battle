@@ -460,6 +460,9 @@ select option { background: var(--card); color: var(--text); }
 .rail-sub span { font-size: 12.5px; color: var(--text2); font-weight: 600; }
 .rail-sub b { font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .rail-links { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 2px; }
+/* 사이트 이동 네비: 3열 그리드 (위 홈/주식소식/주식정보, 아래 아케이드/가챠/관리자) */
+.rail-nav { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.rail-nav .rail-link { text-align: center; padding: 8px 6px; }
 .rail-link { font-size: 12.5px; font-weight: 700; color: var(--brand); text-decoration: none; background: var(--card); border: 1px solid var(--border); border-radius: 999px; padding: 6px 12px; cursor: pointer; font-family: inherit; }
 .rail-link:hover { background: var(--bg2); }
 .rail-link.as-btn { color: var(--text2); }

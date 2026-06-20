@@ -687,8 +687,11 @@ function updateSiteNav(code) {
   const sel = (selStock) => (selStock && selStock.name) || "";
   const company = ""; // battle 종목 id 는 board/wiki 회사 id 와 직접 매칭되지 않아 방 코드만 유지
   const setHref = (id, url) => { const el = document.getElementById(id); if (el) el.href = url; };
+  setHref("navHome", site.buildHomeUrl(code));
   setHref("navBoard", site.buildBoardUrl(code));
   setHref("navWiki", site.buildWikiUrl(code, company));
+  setHref("navArcade", site.buildArcadeUrl(code));
+  setHref("navGacha", site.buildGachaUrl(code));
   setHref("navAdmin", site.buildAdminUrl(code));
 }
 
@@ -883,7 +886,7 @@ async function doExchange() { // 환전(빼오기): 시장 현금 → 금고
   if (!roomData || !uid) return;
   const cash = roomData.players?.[uid]?.cash || 0;
   if (cash < 1) { ui.showToast("환전할 현금이 없습니다", "err"); return; }
-  const input = prompt(`채우기(빼오기): 시장 현금을 금고로 옮깁니다. 수수료 ${BANK_FEE * 100}%\n보유 현금 ${won(cash)}원\n옮길 금액을 입력하세요:`, String(cash));
+  const input = prompt(`채우기(넣기): 시장 현금을 금고에 넣습니다. 수수료 ${BANK_FEE * 100}%\n보유 현금 ${won(cash)}원\n금고에 넣을 금액을 입력하세요:`, String(cash));
   if (input === null) return;
   const amt = Math.floor(Number(input) || 0);
   if (!amt || amt < 1) { ui.showToast("금액을 확인하세요", "err"); return; }
@@ -900,7 +903,7 @@ async function doFill() { // 채우기: 금고 → 시장 현금
   if (!uid) return;
   const bal = state.bank || 0;
   if (bal < 1) { ui.showToast("금고 잔액이 없습니다. 먼저 환전(빼오기) 하세요", "err"); return; }
-  const input = prompt(`환전(넣기): 금고 잔액을 시장 현금으로 넣습니다. 수수료 ${BANK_FEE * 100}%\n금고 잔액 ${won(bal)}원\n넣을 금액을 입력하세요:`, String(bal));
+  const input = prompt(`환전(빼기): 금고에서 빼서 시장 현금으로 넣습니다. 수수료 ${BANK_FEE * 100}%\n금고 잔액 ${won(bal)}원\n금고에서 뺄 금액을 입력하세요:`, String(bal));
   if (input === null) return;
   const amt = Math.floor(Number(input) || 0);
   if (!amt || amt < 1) { ui.showToast("금액을 확인하세요", "err"); return; }
