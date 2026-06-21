@@ -277,24 +277,30 @@ function subscribeBank() {
   // v2.0: 신용등급/대출 배지(표시 전용, 1회 조회 — 매수/매도 로직에는 영향 없음)
   get(ref(db, `rooms/${MAIN_ROOM}/bank/${state.uid}`)).then((s) => {
     const b = s.val() || {};
-    renderBankBadge(Number(b.creditScore), Number(b.loanPrincipal || 0) + Number(b.loanInterest || 0), b.vipTier || "NORMAL");
+    state.bankLoanOwe = Number(b.loanPrincipal || 0) + Number(b.loanInterest || 0);
+    state.bankCardOverdue = !!(b.card && b.card.overdue);
+    state.bankCardUsed = Number((b.card && b.card.usedAmount) || 0);
+    renderBankBadge(Number(b.creditScore), state.bankLoanOwe, b.vipTier || "NORMAL", b.card || null);
   }).catch(() => {});
 }
 
 function bankGradeOf(s) { s = Math.max(0, Math.min(100, Math.round(isFinite(s) ? s : 60))); return s >= 90 ? "S" : s >= 75 ? "A" : s >= 55 ? "B" : s >= 35 ? "C" : s >= 15 ? "D" : "F"; }
 const VIP_LABEL = { NORMAL: "일반", SILVER: "실버", GOLD: "골드", PLATINUM: "플래티넘", BLACK: "블랙" };
-function renderBankBadge(score, owe, vipTier) {
+function renderBankBadge(score, owe, vipTier, card) {
   const el = document.getElementById("bankBadge");
   if (!el) return;
   const grade = bankGradeOf(score);
   owe = Math.max(0, Math.round(owe || 0));
   const big = owe > 5000000; // 대출 큰 경우 경고 강화
   const black = vipTier === "BLACK";
+  const overdue = !!(card && card.overdue);
+  const cardUsed = Number((card && card.usedAmount) || 0);
   el.hidden = false;
-  el.className = "bank-badge" + (owe > 0 ? " danger" : "") + (big ? " danger-strong" : "") + (black ? " black" : "");
+  el.className = "bank-badge" + (owe > 0 || overdue ? " danger" : "") + (big || overdue ? " danger-strong" : "") + (black ? " black" : "");
   el.innerHTML = `<span class="bb-grade g-${grade}">신용 ${grade}</span>`
     + (vipTier && vipTier !== "NORMAL" ? `<span class="bb-vip v-${vipTier}">VIP ${VIP_LABEL[vipTier] || vipTier}</span>` : "")
-    + (owe > 0 ? `<span class="bb-loan">대출 ${owe.toLocaleString("ko-KR")}원${big ? " · 상환 시급!" : " · 상환 필요"}</span>` : `<span class="bb-ok">대출 없음</span>`);
+    + (owe > 0 ? `<span class="bb-loan">대출 ${owe.toLocaleString("ko-KR")}원${big ? " · 상환 시급!" : " · 상환 필요"}</span>` : `<span class="bb-ok">대출 없음</span>`)
+    + (overdue ? `<span class="bb-loan">💳 카드 미납!</span>` : (card && card.enabled && cardUsed > 0 ? `<span class="bb-vip">💳 카드 사용 ${cardUsed.toLocaleString("ko-KR")}원</span>` : ""));
   el.onclick = () => { location.href = site.buildBankUrl(MAIN_ROOM); };
 }
 
@@ -754,6 +760,15 @@ async function doTrade(kind) {
     return;
   }
   const stockName = roomData.stocks?.[selectedStockId]?.name || "";
+  // v2.9: 대출 보유 + 고액 매수 경고(차단하지 않음, 표시만)
+  if (kind === "buy" && (state.bankLoanOwe || 0) > 0) {
+    const px = Number(roomData.stocks?.[selectedStockId]?.price || 0);
+    const myCash = Number(roomData.players?.[uid]?.cash || 0);
+    const buyAmt = px * getQty();
+    if (myCash > 0 && buyAmt >= myCash * 0.3) {
+      ui.showToast("⚠️ 대출 잔액이 있는 상태에서 큰 금액을 매수합니다. 무리한 매수는 신용에 영향을 줄 수 있어요.", "down");
+    }
+  }
   try {
     if (kind === "buy") {
       await game.buyStock(roomCode, uid, nickname, selectedStockId, getQty(), roomData);
