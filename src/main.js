@@ -274,7 +274,16 @@ function subscribeBank() {
     ui.setBankBalance(state.bank);
     scheduleRender();
   }, () => {});
-  // v2.0: 신용등급/대출 배지(표시 전용, 1회 조회 — 매수/매도 로직에는 영향 없음)
+  // v2.0/2.95: 신용·대출·VIP·카드·이벤트 배지(표시 전용, 1회 조회 — 매수/매도 로직 영향 없음)
+  get(ref(db, `rooms/${MAIN_ROOM}/bankEvents/current`)).then((es) => {
+    const ev = es.val();
+    if (ev && ev.manual && (!ev.expiresAt || Number(ev.expiresAt) > Date.now()) && ev.title) state.bankEvent = ev.title;
+    else state.bankEvent = null;
+    const el = document.getElementById("bankBadge");
+    if (el && !el.hidden && state.bankEvent && !el.querySelector(".bb-evt")) {
+      const s = document.createElement("span"); s.className = "bb-vip bb-evt"; s.textContent = "📰 " + state.bankEvent; el.appendChild(s);
+    }
+  }).catch(() => {});
   get(ref(db, `rooms/${MAIN_ROOM}/bank/${state.uid}`)).then((s) => {
     const b = s.val() || {};
     state.bankLoanOwe = Number(b.loanPrincipal || 0) + Number(b.loanInterest || 0);
@@ -300,7 +309,8 @@ function renderBankBadge(score, owe, vipTier, card) {
   el.innerHTML = `<span class="bb-grade g-${grade}">신용 ${grade}</span>`
     + (vipTier && vipTier !== "NORMAL" ? `<span class="bb-vip v-${vipTier}">VIP ${VIP_LABEL[vipTier] || vipTier}</span>` : "")
     + (owe > 0 ? `<span class="bb-loan">대출 ${owe.toLocaleString("ko-KR")}원${big ? " · 상환 시급!" : " · 상환 필요"}</span>` : `<span class="bb-ok">대출 없음</span>`)
-    + (overdue ? `<span class="bb-loan">💳 카드 미납!</span>` : (card && card.enabled && cardUsed > 0 ? `<span class="bb-vip">💳 카드 사용 ${cardUsed.toLocaleString("ko-KR")}원</span>` : ""));
+    + (overdue ? `<span class="bb-loan">💳 카드 미납!</span>` : (card && card.enabled && cardUsed > 0 ? `<span class="bb-vip">💳 카드 사용 ${cardUsed.toLocaleString("ko-KR")}원</span>` : ""))
+    + (state.bankEvent ? `<span class="bb-vip bb-evt">📰 ${String(state.bankEvent).replace(/[<>&]/g, "")}</span>` : "");
   el.onclick = () => { location.href = site.buildBankUrl(MAIN_ROOM); };
 }
 
